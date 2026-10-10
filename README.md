@@ -1,34 +1,75 @@
-# Skinfolio
+# React + TypeScript + Vite
 
-Mobile web app that checks a prospective skincare product against your whole routine.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Structure
-- `frontend/` React + Vite + Tailwind (mobile-first)
-- `backend/` Express API: rule-based compatibility checker + Gemini explanations
-- `shared/` TypeScript types used by both
-- `firestore.rules`, `firebase.json` Firebase config
+Currently, two official plugins are available:
 
-## Getting started
-1. `git clone <repo-url> && cd skinfolio`
-2. `cp .env.example frontend/.env` and `cp .env.example backend/.env`
-   (ask the team lead for the real Firebase / Gemini values)
-3. `npm run install:all`
-4. In two terminals: `npm run dev:backend` and `npm run dev:frontend`
-5. Open http://localhost:5173 (use browser dev tools mobile view)
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## Team workflow
-- `main` is protected: no direct pushes, merge via Pull Request (1 review).
-- Branch names: `feature/<short-name>`, `fix/<short-name>`.
-- Commit small, pull `main` often.
-- Never commit `.env` or any API key.
+## React Compiler
 
-## P0 checklist
-- [ ] Skin profile
-- [ ] Scan / manual entry
-- [ ] Extract ingredients
-- [ ] AI-assisted product analysis
-- [ ] Save to My Rack
-- [ ] AM/PM routines
-- [ ] Whole-routine analysis
-- [ ] Prioritised findings + next steps
-- [ ] Persistence (Firestore)
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
+```
+
+You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+
+```
