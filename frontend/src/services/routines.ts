@@ -18,12 +18,20 @@ export async function removeRoutine(id: string): Promise<void> {
 }
 
 export async function analyse(products: Product[]): Promise<AnalysisResult> {
+  return postAnalysis({ products });
+}
+
+export async function analyseIngredients(ingredients: string[]): Promise<AnalysisResult> {
+  return postAnalysis({ ingredients });
+}
+
+async function postAnalysis(body: { products?: Product[]; ingredients?: string[] }): Promise<AnalysisResult> {
   const apiUrl = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
   if (!apiUrl) throw new Error("Set VITE_API_URL to connect to the Skinfolio API.");
   const res = await fetch(`${apiUrl}/api/analyse`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ products }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));

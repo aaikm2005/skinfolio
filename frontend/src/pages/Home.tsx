@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Scan, User, RefreshCcw, Check, ArrowLeft, Camera, Image as ImageIcon, Edit2 } from 'lucide-react';
-import type { Product, ProductCategory } from '@shared/types';
+import type { IngredientListStatus, Product, ProductCategory } from '@shared/types';
 import { saveProduct } from '../services/products';
 import { getProfile } from '../services/profile';
 
@@ -15,6 +15,7 @@ export default function Home() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [extracted, setExtracted] = useState<{ name: string; brand: string; category: ProductCategory; ingredients: string[]; instructions: string } | null>(null);
+  const [extractedListComplete, setExtractedListComplete] = useState(false);
   const [scanError, setScanError] = useState('');
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -25,6 +26,7 @@ export default function Home() {
   const [manualBrand, setManualBrand] = useState('');
   const [manualCategory, setManualCategory] = useState<ProductCategory>('cleanser');
   const [manualIngredients, setManualIngredients] = useState('');
+  const [manualListComplete, setManualListComplete] = useState(false);
 
   useEffect(() => {
     if (searchParams.get('scan') === '1') {
@@ -73,6 +75,7 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Product extraction failed. Please retry.');
       setExtracted(data);
+      setExtractedListComplete(false);
     } catch (error) {
       setScanError(error instanceof Error ? error.message : 'Could not scan this product. Please try again.');
     } finally { setScanning(false); }
@@ -81,7 +84,8 @@ export default function Home() {
   const handleSaveExtracted = async () => {
     if (!extracted?.name.trim()) { setScanError('Add a product name before saving.'); return; }
     setSaving(true); setScanError('');
-    const product: Product = { ...extracted, name: extracted.name.trim(), brand: extracted.brand.trim(), id: crypto.randomUUID(), status: 'planning', createdAt: new Date().toISOString() };
+    const ingredientListStatus: IngredientListStatus = extracted.ingredients.length === 0 ? 'unknown' : extractedListComplete ? 'complete' : 'partial';
+    const product: Product = { ...extracted, name: extracted.name.trim(), brand: extracted.brand.trim(), ingredientListStatus, id: crypto.randomUUID(), status: 'planning', createdAt: new Date().toISOString() };
     try {
       await saveProduct(product);
       if (capturedImage) URL.revokeObjectURL(capturedImage);
@@ -98,11 +102,12 @@ export default function Home() {
     const product: Product = {
       id: crypto.randomUUID(), name: manualName.trim(), brand: manualBrand.trim(), category: manualCategory,
       ingredients: manualIngredients.split(/[,\n]/).map(item => item.trim()).filter(Boolean),
+      ingredientListStatus: manualIngredients.trim() ? (manualListComplete ? 'complete' : 'partial') : 'unknown',
       instructions: '', status: 'planning', createdAt: new Date().toISOString(),
     };
     try {
       await saveProduct(product);
-      setManualName(''); setManualBrand(''); setManualIngredients(''); setView('home');
+      setManualName(''); setManualBrand(''); setManualIngredients(''); setManualListComplete(false); setView('home');
       setSuccessMessage('Product saved to My Rack.');
     } catch { setScanError('Could not save this product. Check Firebase setup and try again.'); }
     finally { setSaving(false); }
@@ -119,6 +124,7 @@ export default function Home() {
       <label className="mb-3 block text-sm font-medium">Brand<input value={extracted.brand} onChange={e => setExtracted({ ...extracted, brand: e.target.value })} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
       <label className="mb-3 block text-sm font-medium">Category<select value={extracted.category} onChange={e => setExtracted({ ...extracted, category: e.target.value as ProductCategory })} className="mt-1 w-full rounded-xl border bg-white p-3">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}</select></label>
       <label className="mb-5 block text-sm font-medium">Ingredients<textarea value={extracted.ingredients.join(', ')} onChange={e => setExtracted({ ...extracted, ingredients: e.target.value.split(/[,\n]/).map(x => x.trim()).filter(Boolean) })} rows={4} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
+      {extracted.ingredients.length > 0 && <label className="mb-5 flex items-start gap-2 text-sm text-gray-600"><input type="checkbox" checked={extractedListComplete} onChange={e => setExtractedListComplete(e.target.checked)} className="mt-1 accent-[#6B2D40]" />I verified this is the complete ingredient list on the label</label>}
       <div className="flex gap-3"><button onClick={handleRetake} className="flex-1 rounded-xl border bg-white py-4">Retake</button><button onClick={handleSaveExtracted} disabled={saving} className="flex-1 rounded-xl bg-[#6B2D40] py-4 font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button></div>
     </div>;
   }
@@ -182,6 +188,7 @@ export default function Home() {
             <label className="mb-4 block text-sm font-medium">Brand<input value={manualBrand} onChange={e => setManualBrand(e.target.value)} className="mt-1.5 w-full rounded-xl border p-3 font-normal" /></label>
             <label className="mb-4 block text-sm font-medium">Category<select value={manualCategory} onChange={e => setManualCategory(e.target.value as ProductCategory)} className="mt-1.5 w-full rounded-xl border p-3 font-normal">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}</select></label>
             <label className="mb-4 block text-sm font-medium">Ingredients<textarea value={manualIngredients} onChange={e => setManualIngredients(e.target.value)} rows={4} className="mt-1.5 w-full rounded-xl border p-3 font-normal" placeholder="Separate with commas or new lines" /></label>
+            {manualIngredients.trim() && <label className="mb-4 flex items-start gap-2 text-sm font-normal text-gray-600"><input type="checkbox" checked={manualListComplete} onChange={e => setManualListComplete(e.target.checked)} className="mt-1 accent-[#6B2D40]" />I entered the complete ingredient list on the label</label>}
             <button disabled={saving} className="w-full rounded-xl bg-[#6B2D40] py-3 font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button>
           </form> : <>
           {/* Photo Cards Grid */}

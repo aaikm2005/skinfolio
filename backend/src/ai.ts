@@ -1,6 +1,6 @@
 
 import { GoogleGenAI } from "@google/genai";
-import type { Finding, Product } from "../../shared/types.js";
+import type { Finding, IngredientAssessment, Product } from "../../shared/types.js";
 
 export interface ExtractedProduct {
   name: string;
@@ -39,9 +39,12 @@ const MODEL = "gemini-3.8-flash";
 
 export async function explainFindings(
   products: Product[],
-  findings: Finding[]
+  findings: Finding[],
+  ingredientAssessments: IngredientAssessment[] = []
 ): Promise<{ summary: string; generated: boolean }> {
-  const fallback = products.length > 0 && products.every((product) => product.ingredients.length === 0)
+  const fallback = products.length === 0 && ingredientAssessments.length > 0
+    ? `Matched ${ingredientAssessments.filter((item) => item.known).length} known ingredient(s); ${ingredientAssessments.filter((item) => !item.known).length} ingredient(s) are unknown to the starter knowledge base and were not evaluated.`
+    : products.length > 0 && products.every((product) => product.ingredients.length === 0)
     ? "No ingredient lists are recorded for these products, so the current checker could not evaluate them."
     : products.length === 1 && findings.length === 0
       ? "This product was checked against the app's limited ingredient rules. The checker cannot assess product efficacy or personal suitability, and interaction rules compare ingredients across products."
@@ -78,9 +81,14 @@ ${JSON.stringify(productDetails, null, 2)}
 RULE-BASED FINDINGS:
 ${JSON.stringify(findings, null, 2)}
 
+CURATED INGREDIENT MATCHES (functions, cautions, unknown status, and references supplied by Skinfolio):
+${JSON.stringify(ingredientAssessments, null, 2)}
+
 Instructions:
 - Explain only the findings provided.
-- Do not invent ingredient interactions, evidence, or citations.
+- Explain only supplied curated ingredient matches and findings.
+- Do not invent ingredient functions, interactions, evidence, or citations.
+- Unknown ingredients must remain unknown; do not infer safety or function.
 - Do not change the finding priorities or claim that a product is unsafe
   without sufficient evidence.
 - Distinguish possible irritation from a proven incompatibility.

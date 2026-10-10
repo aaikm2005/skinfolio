@@ -1,101 +1,113 @@
-import type { AnalysisResult, Finding, Product } from "../../shared/types.js";
+import type { AnalysisResult, Finding, IngredientAssessment, Product } from "../../shared/types.js";
+import { INGREDIENT_KNOWLEDGE, INTERACTION_RULES } from "../../shared/knowledge.js";
 
-/**
- * Rule-based checker. Rules are deterministic and documented; AI is NOT used
- * to decide conflicts (it only explains them, see ai.ts).
- *
- * TODO (team): verify each rule and replace `evidence` with a real citation
- * (dermatology source, ingredient safety review, etc.) before the demo.
- */
-interface Rule {
-  id: string;
-  groupA: string[]; // lowercase ingredient keywords
-  groupB: string[];
-  category: Finding["category"];
-  priority: Finding["priority"];
-  explanation: string;
-  evidence: string;
-  nextStep: string;
+const normalize = (value: string) => value.toLocaleLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+function lookupIngredient(inputName: string) {
+  const normalized = normalize(inputName);
+  return INGREDIENT_KNOWLEDGE.find((item) =>
+    [item.name, ...item.aliases].some((candidate) => normalize(candidate) === normalized)
+  );
 }
 
-const RULES: Rule[] = [
-  {
-    id: "retinoid-vs-exfoliating-acid",
-    groupA: ["retinol", "retinal", "tretinoin", "adapalene"],
-    groupB: ["glycolic acid", "lactic acid", "salicylic acid", "mandelic acid"],
-    category: "caution",
-    priority: "high",
-    explanation:
-      "Retinoids and exfoliating acids can both irritate skin; using them together may increase dryness or sensitivity.",
-    evidence: "TODO: add verified source",
-    nextStep: "Consider using them on alternate nights, or in AM vs PM routines.",
-  },
-  {
-    id: "benzoyl-peroxide-vs-retinoid",
-    groupA: ["benzoyl peroxide"],
-    groupB: ["retinol", "retinal", "tretinoin"],
-    category: "caution",
-    priority: "medium",
-    explanation:
-      "Benzoyl peroxide may degrade some retinoids and both can be drying.",
-    evidence: "TODO: add verified source",
-    nextStep: "Check the product instructions and separate their use.",
-  },
-];
+function mapIngredients(ingredients: string[], productId?: string): IngredientAssessment[] {
+  const unique = new Map<string, string>();
+  for (const ingredient of ingredients) {
+    const cleaned = ingredient.trim();
+    if (cleaned) unique.set(normalize(cleaned), cleaned);
+  }
+  return [...unique.values()].map((inputName) => {
+    const entry = lookupIngredient(inputName);
+    return entry
+      ? { productId, inputName, known: true, canonicalName: entry.name, function: entry.function, cautions: entry.cautions, references: entry.references }
+      : { productId, inputName, known: false, cautions: ["Not in the current starter knowledge base; no safety conclusion was made."], references: [] };
+  });
+}
 
-const has = (product: Product, keywords: string[]) =>
-  product.ingredients.some((i) =>
-    keywords.some((k) => i.toLowerCase().includes(k))
-  );
+function getCanonicalIngredients(product: Product): Set<string> {
+  return new Set(product.ingredients.map(lookupIngredient).filter((item) => item !== undefined).map((item) => item.name));
+}
 
-const SCREENING_INGREDIENTS = [
-  "retinol", "retinal", "tretinoin", "adapalene", "glycolic acid",
-  "lactic acid", "salicylic acid", "mandelic acid", "benzoyl peroxide",
-];
+export function analyseIngredients(ingredients: string[]): AnalysisResult {
+  const ingredientAssessments = mapIngredients(ingredients);
+  return {
+    findings: [],
+    productAssessments: [],
+    ingredientAssessments,
+    unevaluatedProductIds: [],
+    warnings: ingredientAssessments.some((item) => !item.known)
+      ? ["Some supplied ingredients are not in the starter knowledge base and were not evaluated."]
+      : [],
+  };
+}
 
 export function analyseRoutine(products: Product[]): AnalysisResult {
   const findings: Finding[] = [];
-  // FR07: missing data is flagged, never treated as safe
-  const unevaluated = products
-    .filter((p) => p.ingredients.length === 0)
-    .map((p) => p.id);
+  const ingredientAssessments = products.flatMap((product) => mapIngredients(product.ingredients, product.id));
+  const unevaluatedProductIds = products.filter((product) => product.ingredients.length === 0).map((product) => product.id);
   const productAssessments = products.map((product) => {
-    const recognizedIngredients = product.ingredients.filter((ingredient) =>
-      SCREENING_INGREDIENTS.some((keyword) => ingredient.toLowerCase().includes(keyword))
-    );
+    const matches = mapIngredients(product.ingredients, product.id);
+    const listStatus = product.ingredientListStatus ?? "unknown";
+    const unknownIngredients = matches.filter((item) => !item.known).map((item) => item.inputName);
+    const recognizedIngredients = matches.filter((item) => item.known).map((item) => item.canonicalName!);
+    const message = product.ingredients.length === 0
+      ? "No ingredient list is recorded, so this product could not be screened."
+      : listStatus !== "complete"
+        ? "The ingredient list is marked incomplete or unverified; matches are partial and may miss other ingredients."
+        : recognizedIngredients.length === 0
+          ? "No ingredients matched this starter knowledge base. This is not a safety finding."
+          : "Known ingredients were matched against the starter rules; unknown ingredients are not considered safe by default.";
     return {
       productId: product.id,
       hasIngredients: product.ingredients.length > 0,
       recognizedIngredients,
-      message: product.ingredients.length === 0
-        ? "No ingredient list is recorded, so this product could not be screened."
-        : recognizedIngredients.length > 0
-          ? "Some ingredients match the current screening rules. This is not a full safety assessment."
-          : "No ingredients matched the current screening rules. This does not mean the product is risk-free.",
+      message,
+      ingredientListStatus: listStatus,
+      unknownIngredients,
+      references: matches.flatMap((item) => item.references),
     };
   });
-  const evaluable = products.filter((p) => p.ingredients.length > 0);
 
-  for (const rule of RULES) {
-    for (const a of evaluable) {
-      for (const b of evaluable) {
-        if (a.id === b.id) continue;
-        if (has(a, rule.groupA) && has(b, rule.groupB)) {
-          findings.push({
-            id: `${rule.id}:${a.id}:${b.id}`,
-            category: rule.category,
-            priority: rule.priority,
-            productIds: [a.id, b.id],
-            explanation: rule.explanation,
-            evidence: rule.evidence,
-            nextStep: rule.nextStep,
-          });
-        }
+  for (const rule of INTERACTION_RULES) {
+    const expected = new Set(rule.relevantIngredients.map(normalize));
+    for (let left = 0; left < products.length; left += 1) {
+      const a = products[left];
+      if (!a.ingredients.length) continue;
+      const aHasRelevant = [...getCanonicalIngredients(a)].some((name) => expected.has(normalize(name)));
+      if (!aHasRelevant) continue;
+      for (let right = left + 1; right < products.length; right += 1) {
+        const b = products[right];
+        if (!b.ingredients.length) continue;
+        const aIngredients = getCanonicalIngredients(a);
+        const bIngredients = getCanonicalIngredients(b);
+        const matched = rule.relevantIngredients.filter((ingredient) =>
+          [...aIngredients, ...bIngredients].some((name) => normalize(name) === normalize(ingredient))
+        );
+        const splitAcrossProducts = matched.some((ingredient) => [...aIngredients].some((name) => normalize(name) === normalize(ingredient)))
+          && matched.some((ingredient) => [...bIngredients].some((name) => normalize(name) === normalize(ingredient)));
+        if (!splitAcrossProducts) continue;
+        findings.push({
+          id: `${rule.id}:${a.id}:${b.id}`,
+          category: "caution",
+          priority: "medium",
+          productIds: [a.id, b.id],
+          explanation: `${rule.potentialConcern}. ${rule.explanation}`,
+          evidence: rule.references.map((reference) => reference.title).join("; "),
+          nextStep: "Consider separating use or following the product labels; ask a dermatologist if irritation occurs or you have a skin condition.",
+          references: rule.references,
+        });
       }
     }
   }
 
-  const order = { high: 0, medium: 1, low: 2 } as const;
-  findings.sort((x, y) => order[x.priority] - order[y.priority]);
-  return { findings, productAssessments, unevaluatedProductIds: unevaluated };
+  const warnings: string[] = [];
+  if (unevaluatedProductIds.length) warnings.push("Products without ingredient lists could not be screened.");
+  if (productAssessments.some((assessment) => assessment.hasIngredients && assessment.ingredientListStatus !== "complete")) {
+    warnings.push("One or more ingredient lists are incomplete or unverified; a missing match is not evidence of safety.");
+  }
+  if (ingredientAssessments.some((assessment) => !assessment.known)) {
+    warnings.push("Some ingredients are not in the starter knowledge base and were not assessed.");
+  }
+
+  return { findings, productAssessments, ingredientAssessments, unevaluatedProductIds, warnings };
 }

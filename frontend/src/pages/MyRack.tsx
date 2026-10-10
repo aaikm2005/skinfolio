@@ -18,6 +18,7 @@ export default function MyRack() {
   const [brand, setBrand] = useState("");
   const [category, setCategory] = useState<ProductCategory>("cleanser");
   const [ingredients, setIngredients] = useState("");
+  const [ingredientsComplete, setIngredientsComplete] = useState(false);
   const [status, setStatus] = useState<ProductStatus>("using");
   const [checkedProducts, setCheckedProducts] = useState<Record<string, AnalysisResult>>({});
   const [checkingId, setCheckingId] = useState("");
@@ -40,12 +41,13 @@ export default function MyRack() {
     const product: Product = {
       id: crypto.randomUUID(), name: name.trim(), brand: brand.trim(), category,
       ingredients: ingredients.split(/[,\n]/).map((item) => item.trim()).filter(Boolean),
+      ingredientListStatus: ingredients.trim() ? (ingredientsComplete ? "complete" : "partial") : "unknown",
       instructions: "", status, createdAt: new Date().toISOString(),
     };
     try {
       await saveProduct(product);
       setProducts((current) => [product, ...current]);
-      setName(""); setBrand(""); setIngredients(""); setStatus("using"); setShowForm(false);
+      setName(""); setBrand(""); setIngredients(""); setIngredientsComplete(false); setStatus("using"); setShowForm(false);
     } catch { setError("Could not save this product. Please check your connection and try again."); }
     finally { setSaving(false); }
   };
@@ -111,6 +113,8 @@ export default function MyRack() {
                 <p className="font-semibold text-[#3A2D2A]">Product check</p>
                 <p className="mt-1 text-gray-600">{assessment?.message}</p>
                 {assessment?.recognizedIngredients.length ? <p className="mt-2 text-xs text-gray-600">Matched screening ingredients: {assessment.recognizedIngredients.join(", ")}</p> : null}
+                {assessment?.unknownIngredients.length ? <p className="mt-2 text-xs text-gray-600">Unknown to the starter knowledge base: {assessment.unknownIngredients.join(", ")}</p> : null}
+                {check.ingredientAssessments.filter(item => item.productId === product.id && item.known).map(item => <div key={`${item.productId}-${item.inputName}`} className="mt-3 border-t border-[#E9E0D8] pt-2"><p className="font-medium">{item.canonicalName}: {item.function}</p>{item.cautions.map(caution => <p key={caution} className="mt-1 text-xs text-gray-600">Caution: {caution}</p>)}{item.references.map(reference => <a key={reference.id} href={reference.url} target="_blank" rel="noreferrer" className="mr-2 mt-1 inline-block text-xs text-[#6B2D40] underline">{reference.publisher}: {reference.title}</a>)}</div>)}
                 <p className="mt-2 text-xs text-gray-500">{check.aiSummary}</p>
                 {check.aiGenerated === false && <p className="mt-2 text-xs text-amber-800">This is a fallback summary; Gemini did not return an explanation. Check the backend logs and Gemini API key or quota.</p>}
                 <p className="mt-2 text-xs text-gray-400">Ingredient screening covers a limited set of patterns. It is not a safety guarantee.</p>
@@ -127,6 +131,7 @@ export default function MyRack() {
           <label className="mb-4 block text-sm font-medium">Brand<input value={brand} onChange={(event) => setBrand(event.target.value)} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white p-3 font-normal outline-none focus:border-[#6B2D40]" placeholder="Optional" /></label>
           <label className="mb-4 block text-sm font-medium">Category<select value={category} onChange={(event) => setCategory(event.target.value as ProductCategory)} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white p-3 font-normal">{categories.map((item) => <option key={item} value={item}>{categoryLabel(item)}</option>)}</select></label>
           <label className="mb-4 block text-sm font-medium">Ingredients<textarea value={ingredients} onChange={(event) => setIngredients(event.target.value)} rows={3} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white p-3 font-normal outline-none focus:border-[#6B2D40]" placeholder="Separate ingredients with commas or new lines" /></label>
+          {ingredients.trim() && <label className="mb-4 flex items-start gap-2 text-sm font-normal text-gray-600"><input type="checkbox" checked={ingredientsComplete} onChange={(event) => setIngredientsComplete(event.target.checked)} className="mt-1 accent-[#6B2D40]" />I entered the complete ingredient list on the label</label>}
           <label className="mb-6 block text-sm font-medium">Status<select value={status} onChange={(event) => setStatus(event.target.value as ProductStatus)} className="mt-1.5 w-full rounded-xl border border-gray-200 bg-white p-3 font-normal"><option value="using">Using</option><option value="planning">Planning</option><option value="stopped">Stopped</option></select></label>
           <button disabled={saving} className="w-full rounded-xl bg-[#6B2D40] py-4 font-medium text-white disabled:opacity-60">{saving ? "Saving…" : "Save product"}</button>
         </form>
