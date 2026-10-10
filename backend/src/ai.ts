@@ -3,10 +3,18 @@ import { GoogleGenAI } from "@google/genai";
 import type { Finding, IngredientAssessment, Product } from "../../shared/types.js";
 import { validateProductExtraction, type ProductExtraction } from "../../shared/extraction.js";
 
-export async function extractProductFromImage(image: Buffer, mimeType: string): Promise<ProductExtraction> {
+export function isGeminiApiKeyConfigured(): boolean {
+  return Boolean(process.env.GEMINI_API_KEY);
+}
+
+export function createGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Image extraction requires GEMINI_API_KEY");
-  const ai = new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey });
+}
+
+export async function extractProductFromImage(image: Buffer, mimeType: string): Promise<ProductExtraction> {
+  const ai = createGeminiClient();
   const response = await ai.models.generateContent({
     model: MODEL,
     contents: [
@@ -47,13 +55,12 @@ export async function explainFindings(
       ? "Potential ingredient interactions were flagged by our rule-based checker. Review the findings and product instructions before using these products together."
       : "No interactions covered by our current rules were detected. This does not guarantee that every product combination is compatible.";
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+  if (!isGeminiApiKeyConfigured()) {
     return { summary: fallback, generated: false };
   }
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
+    const ai = createGeminiClient();
 
     const productDetails = products.map((product) => ({
       id: product.id,

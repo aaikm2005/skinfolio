@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { analyseIngredients, analyseRoutine } from "./compatibility.js";
-import { explainFindings, extractProductFromImage } from "./ai.js";
+import { explainFindings, extractProductFromImage, isGeminiApiKeyConfigured } from "./ai.js";
 import { validateImageRequest } from "./extraction-request.js";
 import { createCorsOptions, getAllowedOrigins, isAllowedOrigin } from "./cors-config.js";
 import type { Product, ProductCategory, ProductStatus } from "../../shared/types.js";
@@ -23,6 +23,7 @@ app.use((req, res, next) => {
     originAllowed: isAllowedOrigin(origin, allowedOrigins),
     contentType: req.get("content-type") ?? null,
     contentLength: req.get("content-length") ?? null,
+    geminiApiKeyConfigured: isGeminiApiKeyConfigured(),
   });
   res.on("finish", () => console.info("api.extract.response", {
     status: res.statusCode,
@@ -68,7 +69,7 @@ const normalizeProducts = (input: unknown): Product[] | null => {
 app.post("/api/extract", express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "4mb" }), async (req, res) => {
   const validation = validateImageRequest(req.headers["content-type"], req.body);
   if (!validation.ok) return res.status(validation.status!).json({ error: validation.error });
-  if (!process.env.GEMINI_API_KEY) {
+  if (!isGeminiApiKeyConfigured()) {
     return res.status(503).json({ error: "Image extraction is unavailable until GEMINI_API_KEY is configured" });
   }
   try {
