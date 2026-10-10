@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MoreHorizontal } from 'lucide-react';
+import { Scan, MoreHorizontal } from 'lucide-react';
 import { collection, onSnapshot } from 'firebase/firestore';
 // Make sure you have exported 'db' from your firebase initialization file
 import { db } from '../services/firebase'; 
@@ -55,6 +55,13 @@ export default function MyRack() {
     return () => unsubscribe();
   }, []);
 
+  const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      alert(`Camera capture working! File: ${file.name}`);
+    }
+  };
+
   return (
     <div className="flex flex-col font-sans text-gray-800 -mx-4 -mt-4 bg-[#F8F5F1] min-h-screen">
       <header className="px-6 pt-10 pb-4">
@@ -63,6 +70,18 @@ export default function MyRack() {
       </header>
 
       <div className="px-6 pb-8">
+        <label className="w-full bg-[#6B2D40] hover:bg-[#5E273A] text-white rounded-xl py-4 flex items-center justify-center gap-2 mb-6 transition-colors shadow-sm cursor-pointer">
+          <Scan size={20} />
+          <span className="font-medium text-lg">Check a Product</span>
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" 
+            className="hidden"
+            onChange={handleImageCapture}
+          />
+        </label>
+
         <div className="flex flex-col gap-4">
           {products.map((product) => (
             <div key={product.id} className="bg-white rounded-2xl p-4 flex gap-4 items-center shadow-sm border border-gray-50">
@@ -107,7 +126,7 @@ export default function MyRack() {
           
           {products.length === 0 && (
             <div className="text-center py-10 text-gray-500">
-              No products found. Scan a label from the Home page to add one!
+              No products found. Scan a label to add one!
             </div>
           )}
         </div>
