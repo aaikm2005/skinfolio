@@ -72,7 +72,7 @@ export default function Home() {
       <div className="px-6 pt-4 pb-8 bg-[#F8F5F1] min-h-screen">
         <div className="w-full h-56 bg-gray-200 rounded-2xl mb-8 overflow-hidden">
           <img 
-            src="/api/placeholder/400/250" 
+            src="/skincare-homepage-photo.jpg" // <-- PUT YOUR PHOTO NAME HERE
             alt="Skincare bottles on stone" 
             className="w-full h-full object-cover"
           />
