@@ -1,15 +1,67 @@
-import React from 'react';
-import { Scan, User } from 'lucide-react';
+import React, { useState } from 'react';
+import { Scan, User, RefreshCcw, Check } from 'lucide-react';
 
 export default function Home() {
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
+
   const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      alert(`Camera capture working! File: ${file.name}`);
-      // Future step: Send this file to your OCR service
+      // Create a temporary local URL to display the image
+      const imageUrl = URL.createObjectURL(file);
+      setCapturedImage(imageUrl);
     }
   };
 
+  const handleRetake = () => {
+    setCapturedImage(null);
+  };
+
+  const handleConfirm = () => {
+    alert("Photo confirmed! Next step: Send to AI for OCR.");
+    // After sending to your backend, you would typically route to an Analysis page here.
+    setCapturedImage(null); 
+  };
+
+  // --- PREVIEW SCREEN ---
+  // If an image is captured, show this confirmation screen instead of the home page
+  if (capturedImage) {
+    return (
+      <div className="flex flex-col font-sans text-gray-800 -mx-4 -mt-4 bg-[#F8F5F1] min-h-screen z-50 relative p-6 pt-12">
+        <h2 className="text-2xl font-bold font-serif text-[#3A2D2A] mb-2">Review Photo</h2>
+        <p className="text-gray-500 mb-6 text-sm">Make sure the ingredient label is clearly visible.</p>
+        
+        {/* Image Preview Container */}
+        <div className="flex-1 w-full bg-black/5 rounded-2xl overflow-hidden mb-8 border border-gray-200 shadow-sm flex items-center justify-center">
+          <img 
+            src={capturedImage} 
+            alt="Captured label" 
+            className="w-full h-full object-contain"
+          />
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex gap-3 pb-8">
+          <button 
+            onClick={handleRetake}
+            className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-900 rounded-xl py-4 flex items-center justify-center gap-2 transition-colors shadow-sm"
+          >
+            <RefreshCcw size={20} />
+            <span className="font-medium">Retake</span>
+          </button>
+          <button 
+            onClick={handleConfirm}
+            className="flex-1 bg-[#6B2D40] hover:bg-[#5E273A] text-white rounded-xl py-4 flex items-center justify-center gap-2 transition-colors shadow-sm"
+          >
+            <Check size={20} />
+            <span className="font-medium">Use Photo</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // --- MAIN HOME SCREEN ---
   return (
     <div className="flex flex-col font-sans text-gray-800 -mx-4 -mt-4">
       <header className="flex justify-between items-center px-6 pt-8 pb-4 bg-[#F8F5F1]">
@@ -36,7 +88,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Updated Camera Button */}
         <label className="w-full bg-[#6B2D40] hover:bg-[#5E273A] text-white rounded-xl py-4 flex items-center justify-center gap-2 mb-4 transition-colors cursor-pointer shadow-sm">
           <Scan size={20} />
           <span className="font-medium text-lg">Check a Product</span>
