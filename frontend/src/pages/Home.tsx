@@ -5,6 +5,8 @@ import type { Product, ProductCategory } from '@shared/types';
 import { saveProduct } from '../services/products';
 import { getProfile } from '../services/profile';
 
+const categoryLabel = (category: string) => category.charAt(0).toUpperCase() + category.slice(1);
+
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -115,7 +117,7 @@ export default function Home() {
       <div className="mb-5 flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-white"><img src={capturedImage} alt="Product packaging" className="h-full w-full object-contain" /></div>
       <label className="mb-3 block text-sm font-medium">Product name<input value={extracted.name} onChange={e => setExtracted({ ...extracted, name: e.target.value })} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
       <label className="mb-3 block text-sm font-medium">Brand<input value={extracted.brand} onChange={e => setExtracted({ ...extracted, brand: e.target.value })} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
-      <label className="mb-3 block text-sm font-medium">Category<select value={extracted.category} onChange={e => setExtracted({ ...extracted, category: e.target.value as ProductCategory })} className="mt-1 w-full rounded-xl border bg-white p-3">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{c}</option>)}</select></label>
+      <label className="mb-3 block text-sm font-medium">Category<select value={extracted.category} onChange={e => setExtracted({ ...extracted, category: e.target.value as ProductCategory })} className="mt-1 w-full rounded-xl border bg-white p-3">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}</select></label>
       <label className="mb-5 block text-sm font-medium">Ingredients<textarea value={extracted.ingredients.join(', ')} onChange={e => setExtracted({ ...extracted, ingredients: e.target.value.split(/[,\n]/).map(x => x.trim()).filter(Boolean) })} rows={4} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
       <div className="flex gap-3"><button onClick={handleRetake} className="flex-1 rounded-xl border bg-white py-4">Retake</button><button onClick={handleSaveExtracted} disabled={saving} className="flex-1 rounded-xl bg-[#6B2D40] py-4 font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button></div>
     </div>;
@@ -178,7 +180,7 @@ export default function Home() {
           {manualMode ? <form onSubmit={handleManualSave} className="rounded-2xl bg-white p-4 shadow-sm">
             <label className="mb-4 block text-sm font-medium">Product name<input required value={manualName} onChange={e => setManualName(e.target.value)} className="mt-1.5 w-full rounded-xl border p-3 font-normal" placeholder="e.g. Daily moisturiser" /></label>
             <label className="mb-4 block text-sm font-medium">Brand<input value={manualBrand} onChange={e => setManualBrand(e.target.value)} className="mt-1.5 w-full rounded-xl border p-3 font-normal" /></label>
-            <label className="mb-4 block text-sm font-medium">Category<select value={manualCategory} onChange={e => setManualCategory(e.target.value as ProductCategory)} className="mt-1.5 w-full rounded-xl border p-3 font-normal">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{c}</option>)}</select></label>
+            <label className="mb-4 block text-sm font-medium">Category<select value={manualCategory} onChange={e => setManualCategory(e.target.value as ProductCategory)} className="mt-1.5 w-full rounded-xl border p-3 font-normal">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}</select></label>
             <label className="mb-4 block text-sm font-medium">Ingredients<textarea value={manualIngredients} onChange={e => setManualIngredients(e.target.value)} rows={4} className="mt-1.5 w-full rounded-xl border p-3 font-normal" placeholder="Separate with commas or new lines" /></label>
             <button disabled={saving} className="w-full rounded-xl bg-[#6B2D40] py-3 font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button>
           </form> : <>
