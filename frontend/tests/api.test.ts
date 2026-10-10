@@ -64,3 +64,19 @@ test('reports HTTP, invalid JSON, and network failures distinctly', async () => 
     /network, CORS, TLS, or backend URL failure/,
   );
 });
+
+test('shows distinct extraction messages for quota, timeout, and malformed model responses', async () => {
+  const file = { type: 'image/jpeg' } as File;
+  const categoryErrors: Array<[string, RegExp]> = [
+    ['quota', /quota or rate limit/i],
+    ['timeout', /took too long/i],
+    ['invalid_model_response', /Skinfolio could not read/i],
+  ];
+  for (const [category, expected] of categoryErrors) {
+    await assert.rejects(
+      requestProductExtraction('https://api.example.test', file, 'image/jpeg', async () =>
+        Response.json({ category, error: 'generic backend text' }, { status: 502 })),
+      (error: unknown) => error instanceof Error && expected.test(error.message) && /HTTP 502/.test(error.message),
+    );
+  }
+});

@@ -2,6 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Finding, IngredientAssessment, Product } from "../../shared/types.js";
 import { validateProductExtraction, type ProductExtraction } from "../../shared/extraction.js";
+import { classifyGeminiFailure, ProductExtractionFailure, sanitizeDiagnosticMessage } from "./extraction-errors.js";
 
 export function isGeminiApiKeyConfigured(): boolean {
   return Boolean(process.env.GEMINI_API_KEY);
@@ -15,27 +16,45 @@ export function createGeminiClient(): GoogleGenAI {
 
 export async function extractProductFromImage(image: Buffer, mimeType: string): Promise<ProductExtraction> {
   const ai = createGeminiClient();
-  const response = await ai.models.generateContent({
-    model: MODEL,
-    contents: [
-      { text: `Read the visible text on this skincare or beauty product photo. Return only JSON with keys name, brand, category, ingredients, instructions, rawText, ingredientListStatus, uncertaintyNotes.
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  try {
+    response = await ai.models.generateContent({
+      model: MODEL,
+      contents: [
+        { text: `Read the visible text on this skincare or beauty product photo. Return only JSON with keys name, brand, ingredients, instructions, rawText, ingredientListStatus, uncertaintyNotes.
 category must be one of cleanser, toner, serum, moisturiser, sunscreen, treatment.
 ingredients must be an array of objects {"name": string, "certainty": "clear"|"uncertain"}. Preserve each readable ingredient's exact visible spelling, INCI form, punctuation, and word order. Include small print and join lines/sections in their printed order. Do not duplicate an ingredient repeated because sections overlap. Do not guess unreadable characters or infer a formula from the product name. Mark a partly readable ingredient uncertain only when some text is visible; omit wholly unreadable ingredients and explain their location in uncertaintyNotes.
 rawText must transcribe visible label text as closely as possible, with line breaks where useful; do not complete obscured text. ingredientListStatus is complete only when the ingredient list itself is visibly readable from first through last item with no cropped/obscured parts, partial when a list is visible but incomplete/uncertain, and unknown when no ingredient list can be seen. A front-of-pack-only image should normally have unknown status and an empty ingredients array.
 Use empty strings for unreadable name, brand, instructions, or rawText. uncertaintyNotes must be an array of concise notes. If nothing is uncertain, use an empty array.` },
-      { inlineData: { mimeType, data: image.toString("base64") } },
-    ],
-    config: { responseMimeType: "application/json" },
-  });
-  const raw = response.text?.trim();
-  if (!raw) throw new Error("No product information was readable in the image");
+        { inlineData: { mimeType, data: image.toString("base64") } },
+      ],
+      config: { responseMimeType: "application/json" },
+    });
+  } catch (error) {
+    throw classifyGeminiFailure(error);
+  }
+  try {
+    return parseGeminiProductResponse(response.text);
+  } catch (error) {
+    if (error instanceof ProductExtractionFailure) throw error;
+    throw new ProductExtractionFailure("invalid_model_response", sanitizeDiagnosticMessage(error));
+  }
+}
+
+export function parseGeminiProductResponse(rawText: string | undefined): ProductExtraction {
+  const raw = rawText?.trim();
+  if (!raw) throw new ProductExtractionFailure("empty_response", "Gemini returned an empty response");
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error("Gemini returned malformed extraction JSON");
+    throw new ProductExtractionFailure("invalid_json", "Gemini returned malformed extraction JSON");
   }
-  return validateProductExtraction(parsed);
+  try {
+    return validateProductExtraction(parsed);
+  } catch (error) {
+    throw new ProductExtractionFailure("invalid_model_response", sanitizeDiagnosticMessage(error));
+  }
 }
 
 const MODEL = "gemini-3.8-flash";

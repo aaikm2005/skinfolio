@@ -4,6 +4,7 @@ import cors from "cors";
 import { analyseIngredients, analyseRoutine } from "./compatibility.js";
 import { explainFindings, extractProductFromImage, isGeminiApiKeyConfigured } from "./ai.js";
 import { validateImageRequest } from "./extraction-request.js";
+import { classifyGeminiFailure, extractionFailureResponse, sanitizeDiagnosticMessage } from "./extraction-errors.js";
 import { createCorsOptions, getAllowedOrigins, isAllowedOrigin } from "./cors-config.js";
 import type { Product, ProductCategory, ProductStatus } from "../../shared/types.js";
 import { INGREDIENT_KNOWLEDGE, INTERACTION_RULES, PRODUCT_CATALOGUE } from "../../shared/knowledge.js";
@@ -79,12 +80,15 @@ app.post("/api/extract", express.raw({ type: ["image/jpeg", "image/png", "image/
     }
     return res.json(product);
   } catch (error) {
-    const err = error as { name?: unknown; status?: unknown };
+    const failure = classifyGeminiFailure(error);
+    const responseError = extractionFailureResponse(failure);
     console.error("Product extraction failed", {
-      errorName: typeof err?.name === "string" ? err.name : "unknown",
-      status: typeof err?.status === "number" ? err.status : undefined,
+      category: failure.category,
+      status: 502,
+      providerStatus: failure.providerStatus,
+      message: sanitizeDiagnosticMessage(failure),
     });
-    return res.status(502).json({ error: "Could not extract product details. Please retry with a clearer photo." });
+    return res.status(502).json(responseError);
   }
 });
 

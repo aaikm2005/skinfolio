@@ -84,6 +84,19 @@ export async function requestProductExtraction(
     throw new Error(`The API returned invalid JSON (HTTP ${response.status}). Check the backend response and Function logs.`);
   }
   if (!response.ok) {
+    const category = payload && typeof payload === 'object' && 'category' in payload && typeof payload.category === 'string'
+      ? payload.category
+      : '';
+    const categoryMessage: Record<string, string> = {
+      quota: 'Gemini quota or rate limit reached. Wait a moment and try again, or check the Gemini API quota.',
+      timeout: 'Gemini took too long to respond. Try again in a moment.',
+      provider_configuration: 'Gemini rejected the API credentials or request access. Check the backend Gemini key and model permissions.',
+      temporary_api_failure: 'Gemini is temporarily unavailable. Please try again shortly.',
+      empty_response: 'Gemini returned an empty response. Try a clearer photo.',
+      invalid_json: 'Gemini returned a response Skinfolio could not read. Please retry or enter the product manually.',
+      invalid_model_response: 'Gemini returned a response Skinfolio could not read. Please retry or enter the product manually.',
+    };
+    if (categoryMessage[category]) throw new Error(`${categoryMessage[category]} (HTTP ${response.status})`);
     const message = payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
       ? payload.error
       : 'The backend rejected the extraction request.';
