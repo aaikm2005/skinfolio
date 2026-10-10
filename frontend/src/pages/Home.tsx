@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
-import { Scan, User, RefreshCcw, Check, ArrowLeft, Camera, Image as ImageIcon } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Scan, User, RefreshCcw, Check, ArrowLeft, Camera, Image as ImageIcon, Edit2 } from 'lucide-react';
 
 export default function Home() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  // State to manage which screen is currently visible
   const [view, setView] = useState<'home' | 'scanner' | 'preview'>('home');
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get('scan') === '1') {
+      setView('scanner');
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
