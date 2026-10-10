@@ -1,14 +1,12 @@
 import { NavLink, Route, Routes } from "react-router-dom";
-import { Home as HomeIcon, ScanLine, Library, CalendarCheck, User } from "lucide-react";
+import { Home as HomeIcon, Library, CalendarCheck, User } from "lucide-react";
 import Home from "./pages/Home";
 import SkinProfile from "./pages/SkinProfile";
-import Scanner from "./pages/Scanner";
 import MyRack from "./pages/MyRack";
 import Routines from "./pages/Routines";
 
 const tabs = [
   { to: "/", label: "Home", Icon: HomeIcon },
-  { to: "/scan", label: "Scan", Icon: ScanLine },
   { to: "/rack", label: "My Rack", Icon: Library },
   { to: "/routines", label: "Routines", Icon: CalendarCheck },
   { to: "/profile", label: "Profile", Icon: User },
@@ -16,31 +14,34 @@ const tabs = [
 
 export default function App() {
   return (
-    <div className="mx-auto flex min-h-dvh max-w-md flex-col">
-      <main className="flex-1 p-4 pb-24">
+    <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-white">
+      <main className="flex-1 p-4 pb-24 overflow-y-auto">
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/profile" element={<SkinProfile />} />
-          <Route path="/scan" element={<Scanner />} />
           <Route path="/rack" element={<MyRack />} />
           <Route path="/routines" element={<Routines />} />
         </Routes>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 mx-auto flex max-w-md justify-around border-t border-neutral-200 bg-white py-2 pb-[env(safe-area-inset-bottom)]">
+      <nav className="fixed inset-x-0 bottom-0 mx-auto flex max-w-md justify-around border-t border-neutral-100 bg-white py-3 pb-[env(safe-area-inset-bottom)] z-50">
         {tabs.map(({ to, label, Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={to === "/"}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-0.5 text-xs ${
-                isActive ? "text-green-700" : "text-neutral-500"
+              `flex flex-col items-center gap-1 text-xs transition-colors ${
+                isActive ? "text-[#6B2D40] font-medium" : "text-gray-400 hover:text-gray-600"
               }`
             }
           >
-            <Icon size={20} />
-            {label}
+            {({ isActive }) => (
+              <>
+                <Icon size={24} strokeWidth={isActive ? 2.5 : 2} />
+                <span>{label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
