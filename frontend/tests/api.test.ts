@@ -10,8 +10,16 @@ test('resolves only a backend origin and normalizes one trailing slash', () => {
 
 test('rejects missing production configuration and paths that would duplicate /api', () => {
   assert.throws(() => resolveApiBaseUrl(undefined, false), /not configured/);
+  assert.throws(() => resolveApiBaseUrl('http://localhost:8787', false), /local machine/);
+  assert.throws(() => resolveApiBaseUrl('http://127.0.0.1:8787', false), /local machine/);
+  assert.throws(() => resolveApiBaseUrl('http://[::1]:8787', false), /local machine/);
   assert.throws(() => resolveApiBaseUrl('https://api.example.test/api', false), /only the backend origin/);
   assert.throws(() => resolveApiBaseUrl('https://user:pass@api.example.test', false), /only the backend origin/);
+});
+
+test('keeps localhost available only in development', () => {
+  assert.equal(resolveApiBaseUrl('http://localhost:8787', true), 'http://localhost:8787');
+  assert.equal(resolveApiBaseUrl(undefined, true), 'http://localhost:8787');
 });
 
 test('posts raw image bytes with their image content type and parses structured success', async () => {

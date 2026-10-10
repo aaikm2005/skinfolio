@@ -1,6 +1,7 @@
 import { collection, deleteDoc, doc, getDocs, setDoc } from "firebase/firestore";
 import { db, ensureUser } from "./firebase";
 import type { AnalysisResult, Product, Routine } from "@shared/types";
+import { buildApiUrl, resolveApiBaseUrl } from "./api";
 
 const col = async () => collection(db, "users", await ensureUser(), "routines");
 
@@ -26,9 +27,8 @@ export async function analyseIngredients(ingredients: string[]): Promise<Analysi
 }
 
 async function postAnalysis(body: { products?: Product[]; ingredients?: string[] }): Promise<AnalysisResult> {
-  const apiUrl = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-  if (!apiUrl) throw new Error("Set VITE_API_URL to connect to the Skinfolio API.");
-  const res = await fetch(`${apiUrl}/api/analyse`, {
+  const apiUrl = resolveApiBaseUrl(import.meta.env.VITE_API_URL, import.meta.env.DEV);
+  const res = await fetch(buildApiUrl(apiUrl, "/api/analyse"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

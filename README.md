@@ -11,7 +11,7 @@ npm --prefix backend install
 npm --prefix frontend install
 ```
 
-Copy `frontend/.env.example` to `frontend/.env.local` and add the Firebase web configuration. The scanner uses `http://localhost:8787` automatically in development if `VITE_API_URL` is empty; the checked-in example includes that value explicitly.
+Copy `frontend/.env.example` to `frontend/.env.local` and add the Firebase web configuration. Local development can use `http://localhost:8787` when `VITE_API_URL` is empty. Production requires a deployed backend origin; local and loopback URLs are rejected by the frontend.
 
 Copy `backend/.env.example` to `backend/.env` and set the Gemini key:
 
@@ -49,7 +49,7 @@ The backend is an Express app that Vercel can run as a Node.js Function. `backen
 
 ### Connect the existing frontend
 
-In the Vercel project serving `frontend/`, add `VITE_API_URL` as an environment variable with the backend's deployed origin (scheme and host only; no trailing `/api/extract`). Set it for Production and any Preview environment that should scan products, then redeploy the frontend. Vite embeds this variable during the build.
+In the Vercel project serving `frontend/`, add `VITE_API_URL` as an environment variable with the backend's deployed origin (scheme and host only; no `/api` path and no localhost value). Set it for Production and any Preview environment that should scan products, then redeploy the frontend. Vite embeds this variable during the build.
 
 ### Request size limitation
 

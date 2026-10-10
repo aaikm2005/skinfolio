@@ -13,11 +13,28 @@ export function resolveApiBaseUrl(configuredUrl: string | undefined, isDevelopme
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash || parsed.pathname !== '/') {
     throw new Error('VITE_API_URL must contain only the backend origin, without a path, query, or fragment.');
   }
+  if (!isDevelopment && isLoopbackHost(parsed.hostname)) {
+    throw new Error('VITE_API_URL points to a local machine, which website visitors cannot reach. Set it to the deployed backend origin in Vercel and rebuild the frontend.');
+  }
   return parsed.origin;
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  return host === 'localhost'
+    || host.endsWith('.localhost')
+    || host === '::1'
+    || host === '[::1]'
+    || host === '0.0.0.0'
+    || /^127(?:\.\d{1,3}){3}$/.test(host);
+}
+
+export function buildApiUrl(apiBaseUrl: string, path: `/api/${string}`): string {
+  return `${resolveApiBaseUrl(apiBaseUrl, false)}${path}`;
+}
+
 export function buildExtractUrl(apiBaseUrl: string): string {
-  return `${resolveApiBaseUrl(apiBaseUrl, false)}/api/extract`;
+  return buildApiUrl(apiBaseUrl, '/api/extract');
 }
 
 export async function requestProductExtraction(
