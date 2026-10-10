@@ -1,20 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Scan, User, RefreshCcw, Check, ArrowLeft, Camera, Image as ImageIcon, Edit2 } from 'lucide-react';
+import { Scan, User, ArrowLeft, Camera, Image as ImageIcon, Edit2 } from 'lucide-react';
 import type { IngredientListStatus, Product, ProductCategory } from '@shared/types';
+import { mergeProductExtractions, validateProductExtraction, type ProductExtraction } from '@shared/extraction';
 import { saveProduct } from '../services/products';
 import { getProfile } from '../services/profile';
 
 const categoryLabel = (category: string) => category.charAt(0).toUpperCase() + category.slice(1);
+const IMAGE_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_SCAN_PHOTOS = 4;
+const getImageMimeType = (file: File) => file.type || IMAGE_TYPES[file.name.split('.').pop()?.toLowerCase() ?? ''] || '';
+
+interface CapturedPhoto { file: File; url: string; side: 'front' | 'back' }
 
 export default function Home() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   // State to manage which screen is currently visible
   const [view, setView] = useState<'home' | 'scanner' | 'preview'>('home');
-  const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [capturedFile, setCapturedFile] = useState<File | null>(null);
-  const [extracted, setExtracted] = useState<{ name: string; brand: string; category: ProductCategory; ingredients: string[]; instructions: string } | null>(null);
+  const [capturedPhotos, setCapturedPhotos] = useState<CapturedPhoto[]>([]);
+  const [extracted, setExtracted] = useState<ProductExtraction | null>(null);
   const [extractedListComplete, setExtractedListComplete] = useState(false);
   const [scanError, setScanError] = useState('');
   const [scanning, setScanning] = useState(false);
@@ -41,55 +47,109 @@ export default function Home() {
     }).catch(() => setProfileLabel('Your skin profile'));
   }, []);
 
-  const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setCapturedFile(file);
-      setCapturedImage(URL.createObjectURL(file));
+  const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>, side: CapturedPhoto['side']) => {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = '';
+    if (!files.length) return;
+    const acceptable: File[] = [];
+    const issues: string[] = [];
+    for (const file of files) {
+      const mimeType = getImageMimeType(file);
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
+        issues.push(`${file.name} is not supported; use JPEG, PNG, or WebP.`);
+      } else if (file.size === 0) {
+        issues.push(`${file.name} is empty; choose another photo.`);
+      } else if (file.size > MAX_IMAGE_BYTES) {
+        issues.push(`${file.name} is larger than 8 MB; choose a smaller photo.`);
+      } else acceptable.push(file);
+    }
+    const available = MAX_SCAN_PHOTOS - capturedPhotos.length;
+    if (acceptable.length > available) issues.push(`You can add up to ${MAX_SCAN_PHOTOS} photos for one product.`);
+    const additions = acceptable.slice(0, Math.max(available, 0)).map(file => ({ file, url: URL.createObjectURL(file), side }));
+    if (additions.length) {
+      setCapturedPhotos(current => [...current, ...additions]);
+      setExtracted(null);
       setView('preview');
+      setScanError(issues.join(' '));
+    } else {
+      setScanError(issues.join(' ') || `You can add up to ${MAX_SCAN_PHOTOS} photos for one product.`);
     }
   };
 
-  const handleRetake = () => {
-    if (capturedImage) URL.revokeObjectURL(capturedImage);
-    setCapturedImage(null);
-    setCapturedFile(null);
+  const removePhoto = (index: number) => {
+    if (capturedPhotos.length <= 1) setView('scanner');
+    setCapturedPhotos(current => {
+      const removed = current[index];
+      if (removed) URL.revokeObjectURL(removed.url);
+      return current.filter((_, photoIndex) => photoIndex !== index);
+    });
     setExtracted(null);
     setScanError('');
-    setView('scanner'); // Go back to the scanner choice screen
+  };
+
+  const discardScan = () => {
+    capturedPhotos.forEach(photo => URL.revokeObjectURL(photo.url));
+    setCapturedPhotos([]);
+    setExtracted(null);
+    setScanError('');
+    setView('home');
   };
 
   const handleConfirm = async () => {
-    if (!capturedFile) return;
+    if (!capturedPhotos.length) return;
 
     setScanning(true);
     setScanError('');
     try {
-      const apiUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+      const configuredApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '');
+      const apiUrl = configuredApiUrl.replace(/\/$/, '');
       if (!apiUrl) throw new Error('Set VITE_API_URL to connect to the Skinfolio API.');
-      const response = await fetch(`${apiUrl}/api/extract`, {
-        method: 'POST',
-        headers: { 'Content-Type': capturedFile.type || 'image/jpeg' },
-        body: capturedFile,
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Product extraction failed. Please retry.');
-      setExtracted(data);
+      const results: ProductExtraction[] = [];
+      for (const photo of capturedPhotos) {
+        const response = await fetch(`${apiUrl}/api/extract`, {
+          method: 'POST',
+          headers: { 'Content-Type': getImageMimeType(photo.file) },
+          body: photo.file,
+        });
+        let payload: unknown;
+        try { payload = await response.json(); }
+        catch { throw new Error(response.ok ? 'The API returned an unreadable response.' : `The API request failed (${response.status}). Check the backend and retry.`); }
+        if (!response.ok) {
+          const message = payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
+            ? payload.error : `Product extraction failed (${response.status}). Please retry.`;
+          throw new Error(message);
+        }
+        results.push(validateProductExtraction(payload));
+      }
+      const combined = mergeProductExtractions(results);
+      setExtracted(combined);
       setExtractedListComplete(false);
     } catch (error) {
-      setScanError(error instanceof Error ? error.message : 'Could not scan this product. Please try again.');
+      setScanError(error instanceof TypeError
+        ? 'Could not reach the Skinfolio API. Check that the backend is running, VITE_API_URL is correct, and the backend CORS_ORIGIN includes this website.'
+        : error instanceof Error ? error.message : 'Could not scan this product. Please try again.');
     } finally { setScanning(false); }
   };
 
   const handleSaveExtracted = async () => {
     if (!extracted?.name.trim()) { setScanError('Add a product name before saving.'); return; }
     setSaving(true); setScanError('');
-    const ingredientListStatus: IngredientListStatus = extracted.ingredients.length === 0 ? 'unknown' : extractedListComplete ? 'complete' : 'partial';
-    const product: Product = { ...extracted, name: extracted.name.trim(), brand: extracted.brand.trim(), ingredientListStatus, id: crypto.randomUUID(), status: 'planning', createdAt: new Date().toISOString() };
+    // Uncertain AI readings are shown for correction but are excluded from matching unless the user confirms the full list.
+    const ingredients = extracted.ingredients
+      .filter(item => item.certainty === 'clear' || extractedListComplete)
+      .map(item => item.name.trim()).filter(Boolean);
+    const ingredientListStatus: IngredientListStatus = ingredients.length === 0 ? 'unknown' : extractedListComplete ? 'complete' : 'partial';
+    const product: Product = {
+      name: extracted.name.trim(), brand: extracted.brand.trim(), category: extracted.category,
+      ingredients, instructions: '', ingredientListStatus,
+      extractionRawText: extracted.rawText,
+      extractionUncertaintyNotes: extractedListComplete ? [] : [...extracted.uncertaintyNotes, ...extracted.ingredients.filter(item => item.certainty === 'uncertain').map(item => `Verify ingredient spelling: ${item.name}`)],
+      id: crypto.randomUUID(), status: 'planning', createdAt: new Date().toISOString(),
+    };
     try {
       await saveProduct(product);
-      if (capturedImage) URL.revokeObjectURL(capturedImage);
-      setCapturedImage(null); setCapturedFile(null); setExtracted(null); setView('home');
+      capturedPhotos.forEach(photo => URL.revokeObjectURL(photo.url));
+      setCapturedPhotos([]); setExtracted(null); setView('home');
       setSuccessMessage('Product saved to My Rack.');
     } catch { setScanError('Product details were read, but could not be saved. Check Firebase setup and try again.'); }
     finally { setSaving(false); }
@@ -114,42 +174,38 @@ export default function Home() {
   };
 
   // --- 1. PREVIEW SCREEN ---
-  if (view === 'preview' && capturedImage && extracted) {
+  if (view === 'preview' && capturedPhotos.length > 0 && extracted) {
     return <div className="-mx-4 -mt-4 min-h-screen bg-[#F8F5F1] p-6 pt-12 font-sans text-gray-800">
       <h2 className="mb-2 font-serif text-2xl font-bold text-[#3A2D2A]">Review product details</h2>
-      <p className="mb-5 text-sm text-gray-500">AI extraction can make mistakes. Check the label and correct anything before saving.</p>
+      <p className="mb-5 text-sm text-gray-500">AI extraction can make mistakes. Check every photo and correct anything before saving.</p>
       {scanError && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{scanError}</p>}
-      <div className="mb-5 flex h-36 items-center justify-center overflow-hidden rounded-2xl bg-white"><img src={capturedImage} alt="Product packaging" className="h-full w-full object-contain" /></div>
+      <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">{capturedPhotos.map((photo, index) => <div key={photo.url} className="relative h-28 overflow-hidden rounded-xl bg-white"><img src={photo.url} alt={`${photo.side} of product packaging, photo ${index + 1}`} className="h-full w-full object-contain" /><button type="button" onClick={() => removePhoto(index)} className="absolute right-1 top-1 rounded-lg bg-white/90 px-2 py-1 text-xs text-gray-800">Remove</button></div>)}</div>
+      <p className={`mb-3 rounded-xl p-3 text-sm ${extracted.ingredientListStatus === 'complete' ? 'bg-green-50 text-green-800' : 'bg-amber-50 text-amber-900'}`}>
+        {extracted.ingredientListStatus === 'complete' ? 'The photo appears to show a complete readable ingredient list. Verify it against the package.' : extracted.ingredientListStatus === 'partial' ? 'The ingredient list may be incomplete or partly unreadable. Add another photo or verify every line before saving.' : 'No ingredient list was readable in these photos. Add a clear label photo or enter ingredients manually.'}
+      </p>
+      {extracted.uncertaintyNotes.length > 0 && <ul className="mb-3 list-disc rounded-xl bg-amber-50 p-3 pl-8 text-sm text-amber-900">{extracted.uncertaintyNotes.map((note, index) => <li key={`${note}-${index}`}>{note}</li>)}</ul>}
+      {extracted.ingredients.some(item => item.certainty === 'uncertain') && <p className="mb-2 text-sm text-amber-900">Check spelling for: {extracted.ingredients.filter(item => item.certainty === 'uncertain').map(item => item.name).join(', ')}</p>}
       <label className="mb-3 block text-sm font-medium">Product name<input value={extracted.name} onChange={e => setExtracted({ ...extracted, name: e.target.value })} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
       <label className="mb-3 block text-sm font-medium">Brand<input value={extracted.brand} onChange={e => setExtracted({ ...extracted, brand: e.target.value })} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
       <label className="mb-3 block text-sm font-medium">Category<select value={extracted.category} onChange={e => setExtracted({ ...extracted, category: e.target.value as ProductCategory })} className="mt-1 w-full rounded-xl border bg-white p-3">{['cleanser','toner','serum','moisturiser','sunscreen','treatment'].map(c => <option key={c} value={c}>{categoryLabel(c)}</option>)}</select></label>
-      <label className="mb-5 block text-sm font-medium">Ingredients<textarea value={extracted.ingredients.join(', ')} onChange={e => setExtracted({ ...extracted, ingredients: e.target.value.split(/[,\n]/).map(x => x.trim()).filter(Boolean) })} rows={4} className="mt-1 w-full rounded-xl border bg-white p-3" /></label>
+      <label className="mb-5 block text-sm font-medium">Ingredients<textarea value={extracted.ingredients.map(item => item.name).join('\n')} onChange={e => setExtracted({ ...extracted, ingredients: e.target.value.split(/\r?\n/).map(name => name.trim()).filter(Boolean).map(name => ({ name, certainty: 'clear' as const })) })} rows={7} className="mt-1 w-full rounded-xl border bg-white p-3" placeholder="One ingredient per line" /><span className="mt-1 block text-xs font-normal text-gray-500">Edit, remove, or add ingredients, one per line. AI text must be checked against the package.</span></label>
       {extracted.ingredients.length > 0 && <label className="mb-5 flex items-start gap-2 text-sm text-gray-600"><input type="checkbox" checked={extractedListComplete} onChange={e => setExtractedListComplete(e.target.checked)} className="mt-1 accent-[#6B2D40]" />I verified this is the complete ingredient list on the label</label>}
-      <div className="flex gap-3"><button onClick={handleRetake} className="flex-1 rounded-xl border bg-white py-4">Retake</button><button onClick={handleSaveExtracted} disabled={saving} className="flex-1 rounded-xl bg-[#6B2D40] py-4 font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button></div>
+      <details className="mb-5 rounded-xl border border-gray-200 bg-white p-3"><summary className="cursor-pointer text-sm font-medium">View extracted label text</summary><pre className="mt-3 whitespace-pre-wrap break-words text-xs text-gray-600">{extracted.rawText || 'No label text was readable.'}</pre></details>
+      <div className="flex flex-col gap-3 sm:flex-row"><button onClick={() => setView('scanner')} className="flex-1 rounded-xl border bg-white py-4">Add or retake photo</button><button onClick={handleSaveExtracted} disabled={saving} className="flex-1 rounded-xl bg-[#6B2D40] py-4 font-medium text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save product'}</button></div>
     </div>;
   }
 
-  if (view === 'preview' && capturedImage) {
+  if (view === 'preview' && capturedPhotos.length > 0 && !extracted) {
     return (
       <div className="flex flex-col font-sans text-gray-800 -mx-4 -mt-4 bg-[#F8F5F1] min-h-screen z-50 relative p-6 pt-12">
-        <h2 className="text-2xl font-bold font-serif text-[#3A2D2A] mb-2">Review Photo</h2>
-        <p className="text-gray-500 mb-6 text-sm">Make sure the ingredient label is clearly visible.</p>
-        
-        <div className="flex-1 w-full bg-black/5 rounded-2xl overflow-hidden mb-8 border border-gray-200 shadow-sm flex items-center justify-center">
-          <img src={capturedImage} alt="Captured label" className="w-full h-full object-contain" />
+        <h2 className="text-2xl font-bold font-serif text-[#3A2D2A] mb-2">Review photos</h2>
+        <p className="text-gray-500 mb-4 text-sm">Check focus and framing. You can add up to {MAX_SCAN_PHOTOS} photos, such as the front and separate ingredient panels.</p>
+        {scanError && <p role="alert" className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">{scanError}</p>}
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">{capturedPhotos.map((photo, index) => <div key={photo.url} className="relative h-36 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"><img src={photo.url} alt={`${photo.side} packaging photo ${index + 1}`} className="h-full w-full object-contain" /><button type="button" onClick={() => removePhoto(index)} className="absolute right-1 top-1 rounded-lg bg-white/90 px-2 py-1 text-xs">Remove</button></div>)}</div>
+        <div className="mt-auto flex flex-col gap-3 pb-8 sm:flex-row">
+          <button onClick={() => setView('scanner')} className="flex-1 rounded-xl border border-gray-200 bg-white py-4">Add another photo</button>
+          <button onClick={handleConfirm} disabled={scanning || !capturedPhotos.length} className="flex-1 rounded-xl bg-[#6B2D40] py-4 text-white shadow-sm disabled:opacity-60"><span className="font-medium">{scanning ? 'Reading photo(s)…' : 'Use Photo(s)'}</span></button>
         </div>
-
-        <div className="flex gap-3 pb-8">
-          <button onClick={handleRetake} className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-900 rounded-xl py-4 flex items-center justify-center gap-2 transition-colors shadow-sm">
-            <RefreshCcw size={20} />
-            <span className="font-medium">Retake</span>
-          </button>
-          <button onClick={handleConfirm} disabled={scanning} className="flex-1 bg-[#6B2D40] hover:bg-[#5E273A] text-white rounded-xl py-4 flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-60">
-            <Check size={20} />
-            <span className="font-medium">{scanning ? 'Reading label…' : 'Use Photo'}</span>
-          </button>
-        </div>
-        {scanError && <p role="alert" className="-mt-5 mb-5 text-sm text-red-700">{scanError}</p>}
       </div>
     );
   }
@@ -160,7 +216,7 @@ export default function Home() {
       <div className="flex flex-col font-sans text-gray-800 -mx-4 -mt-4 bg-[#F8F5F1] min-h-screen z-50 relative">
         {/* Header */}
         <div className="flex items-center px-6 pt-12 pb-4 relative">
-          <button onClick={() => setView('home')} className="absolute left-6 text-gray-600 hover:text-gray-900 p-1">
+          <button onClick={discardScan} className="absolute left-6 text-gray-600 hover:text-gray-900 p-1">
             <ArrowLeft size={24} />
           </button>
           <h1 className="w-full text-center font-semibold text-gray-900 text-lg">Check a Product</h1>
@@ -169,7 +225,7 @@ export default function Home() {
         <div className="px-6 pt-6 pb-24 overflow-y-auto">
           <h2 className="text-3xl font-bold font-serif text-[#3A2D2A] mb-3 leading-tight">What are you considering?</h2>
           <p className="text-gray-500 text-sm mb-6 leading-relaxed">
-            Photograph the packaging to extract the details from the label.
+            Capture the front for product details and each ingredient panel for a more complete read. You can add up to {MAX_SCAN_PHOTOS} photos.
           </p>
 
           {/* Tabs */}
@@ -201,11 +257,11 @@ export default function Home() {
               
               <label className="w-full bg-[#6B2D40] text-white text-xs font-medium rounded-lg py-2 mb-2 flex items-center justify-center gap-1.5 cursor-pointer">
                 <Camera size={14} /> Take photo
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageCapture} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple className="hidden" onChange={e => handleImageCapture(e, 'front')} />
               </label>
               <label className="w-full bg-white border border-gray-200 text-gray-700 text-xs font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 cursor-pointer">
                 <ImageIcon size={14} /> Upload
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageCapture} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e => handleImageCapture(e, 'front')} />
               </label>
             </div>
 
@@ -217,11 +273,11 @@ export default function Home() {
               
               <label className="w-full bg-[#6B2D40] text-white text-xs font-medium rounded-lg py-2 mb-2 flex items-center justify-center gap-1.5 cursor-pointer">
                 <Camera size={14} /> Take photo
-                <input type="file" accept="image/*" capture="environment" className="hidden" onChange={handleImageCapture} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" multiple className="hidden" onChange={e => handleImageCapture(e, 'back')} />
               </label>
               <label className="w-full bg-white border border-gray-200 text-gray-700 text-xs font-medium rounded-lg py-2 flex items-center justify-center gap-1.5 cursor-pointer">
                 <ImageIcon size={14} /> Upload
-                <input type="file" accept="image/*" className="hidden" onChange={handleImageCapture} />
+                <input type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e => handleImageCapture(e, 'back')} />
               </label>
             </div>
           </div>
@@ -230,7 +286,7 @@ export default function Home() {
           <div className="mb-8">
             <h3 className="font-bold text-gray-900 text-sm mb-2">For a clear read</h3>
             <p className="text-gray-500 text-xs leading-relaxed">
-              Fill the frame with the label and avoid glare from lights. Make sure the full ingredient list is visible, including small print.
+              Photograph the full ingredient list in focus with good, even lighting. Avoid glare, shadows, blur, and cut-off edges; use separate close-ups for small print or multiple label panels. Use JPEG, PNG, or WebP images up to 8 MB each.
             </p>
           </div>
           </>}

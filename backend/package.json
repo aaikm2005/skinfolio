@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch server.ts",
     "build": "tsc",
-    "test": "tsx --test src/compatibility.test.ts",
-    "start": "node dist/index.js"
+    "test": "node --import tsx --test src/*.test.ts",
+    "start": "node dist/backend/server.js"
   },
   "dependencies": {
     "@google/genai": "^2.28.0",

@@ -16,6 +16,8 @@ export interface Product {
   category: ProductCategory;
   ingredients: string[]; // one entry per ingredient so the checker can inspect each
   ingredientListStatus?: IngredientListStatus;
+  extractionRawText?: string;
+  extractionUncertaintyNotes?: string[];
   instructions: string; // verified/label instructions only, NOT AI text
   imageUrl?: string;
   status: ProductStatus;

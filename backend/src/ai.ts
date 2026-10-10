@@ -1,38 +1,33 @@
 
 import { GoogleGenAI } from "@google/genai";
 import type { Finding, IngredientAssessment, Product } from "../../shared/types.js";
+import { validateProductExtraction, type ProductExtraction } from "../../shared/extraction.js";
 
-export interface ExtractedProduct {
-  name: string;
-  brand: string;
-  category: Product["category"];
-  ingredients: string[];
-  instructions: string;
-}
-
-export async function extractProductFromImage(image: Buffer, mimeType: string): Promise<ExtractedProduct> {
+export async function extractProductFromImage(image: Buffer, mimeType: string): Promise<ProductExtraction> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Image extraction requires GEMINI_API_KEY");
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
     model: MODEL,
     contents: [
-      { text: `Read this skincare product packaging. Return only a JSON object with keys name, brand, category, ingredients, instructions. category must be one of cleanser, toner, serum, moisturiser, sunscreen, treatment. ingredients must be an array of individual INCI ingredients read from the image; use an empty array if unreadable. Use empty strings for unreadable name, brand, or instructions. Do not guess or invent label text.` },
+      { text: `Read the visible text on this skincare or beauty product photo. Return only JSON with keys name, brand, category, ingredients, instructions, rawText, ingredientListStatus, uncertaintyNotes.
+category must be one of cleanser, toner, serum, moisturiser, sunscreen, treatment.
+ingredients must be an array of objects {"name": string, "certainty": "clear"|"uncertain"}. Preserve each readable ingredient's exact visible spelling, INCI form, punctuation, and word order. Include small print and join lines/sections in their printed order. Do not duplicate an ingredient repeated because sections overlap. Do not guess unreadable characters or infer a formula from the product name. Mark a partly readable ingredient uncertain only when some text is visible; omit wholly unreadable ingredients and explain their location in uncertaintyNotes.
+rawText must transcribe visible label text as closely as possible, with line breaks where useful; do not complete obscured text. ingredientListStatus is complete only when the ingredient list itself is visibly readable from first through last item with no cropped/obscured parts, partial when a list is visible but incomplete/uncertain, and unknown when no ingredient list can be seen. A front-of-pack-only image should normally have unknown status and an empty ingredients array.
+Use empty strings for unreadable name, brand, instructions, or rawText. uncertaintyNotes must be an array of concise notes. If nothing is uncertain, use an empty array.` },
       { inlineData: { mimeType, data: image.toString("base64") } },
     ],
     config: { responseMimeType: "application/json" },
   });
   const raw = response.text?.trim();
   if (!raw) throw new Error("No product information was readable in the image");
-  const parsed = JSON.parse(raw) as Partial<ExtractedProduct>;
-  const categories: Product["category"][] = ["cleanser", "toner", "serum", "moisturiser", "sunscreen", "treatment"];
-  return {
-    name: typeof parsed.name === "string" ? parsed.name : "",
-    brand: typeof parsed.brand === "string" ? parsed.brand : "",
-    category: categories.includes(parsed.category as Product["category"]) ? parsed.category as Product["category"] : "treatment",
-    ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients.filter((item): item is string => typeof item === "string") : [],
-    instructions: typeof parsed.instructions === "string" ? parsed.instructions : "",
-  };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("Gemini returned malformed extraction JSON");
+  }
+  return validateProductExtraction(parsed);
 }
 
 const MODEL = "gemini-3.8-flash";
