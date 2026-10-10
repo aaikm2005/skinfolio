@@ -2,6 +2,39 @@
 import { GoogleGenAI } from "@google/genai";
 import type { Finding, Product } from "../../shared/types.js";
 
+export interface ExtractedProduct {
+  name: string;
+  brand: string;
+  category: Product["category"];
+  ingredients: string[];
+  instructions: string;
+}
+
+export async function extractProductFromImage(image: Buffer, mimeType: string): Promise<ExtractedProduct> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Image extraction requires GEMINI_API_KEY");
+  const ai = new GoogleGenAI({ apiKey });
+  const response = await ai.models.generateContent({
+    model: MODEL,
+    contents: [
+      { text: `Read this skincare product packaging. Return only a JSON object with keys name, brand, category, ingredients, instructions. category must be one of cleanser, toner, serum, moisturiser, sunscreen, treatment. ingredients must be an array of individual INCI ingredients read from the image; use an empty array if unreadable. Use empty strings for unreadable name, brand, or instructions. Do not guess or invent label text.` },
+      { inlineData: { mimeType, data: image.toString("base64") } },
+    ],
+    config: { responseMimeType: "application/json" },
+  });
+  const raw = response.text?.trim();
+  if (!raw) throw new Error("No product information was readable in the image");
+  const parsed = JSON.parse(raw) as Partial<ExtractedProduct>;
+  const categories: Product["category"][] = ["cleanser", "toner", "serum", "moisturiser", "sunscreen", "treatment"];
+  return {
+    name: typeof parsed.name === "string" ? parsed.name : "",
+    brand: typeof parsed.brand === "string" ? parsed.brand : "",
+    category: categories.includes(parsed.category as Product["category"]) ? parsed.category as Product["category"] : "treatment",
+    ingredients: Array.isArray(parsed.ingredients) ? parsed.ingredients.filter((item): item is string => typeof item === "string") : [],
+    instructions: typeof parsed.instructions === "string" ? parsed.instructions : "",
+  };
+}
+
 const MODEL = "gemini-3.8-flash";
 
 export async function explainFindings(

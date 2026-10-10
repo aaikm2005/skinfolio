@@ -30,7 +30,7 @@ export interface Routine {
 }
 
 export interface SkinProfile {
-  skinType: "dry" | "oily" | "combination" | "normal" | "sensitive";
+  skinType: "dry" | "oily" | "combination" | "normal" | "sensitive" | "unsure";
   concerns: string[];
   preferences: string[];
 }
@@ -51,7 +51,16 @@ export interface Finding {
 
 export interface AnalysisResult {
   findings: Finding[];
+  productAssessments: ProductAssessment[];
   // Products with missing/unverified data are listed, never treated as safe (FR07)
   unevaluatedProductIds: string[];
   aiSummary?: string; // AI-generated, kept separate from rule findings
+  aiGenerated?: boolean;
+}
+
+export interface ProductAssessment {
+  productId: string;
+  hasIngredients: boolean;
+  recognizedIngredients: string[];
+  message: string;
 }

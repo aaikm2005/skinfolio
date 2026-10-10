@@ -1,130 +1,55 @@
-import React, { useState } from 'react';
-import { Circle, CircleDot, Check } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { Check, Circle, CircleDot } from "lucide-react";
+import type { SkinProfile as SkinProfileData } from "@shared/types";
+import { getProfile, saveProfile } from "../services/profile";
 
-const skinTypes = [
-  { id: 'oily', label: 'Oily', desc: 'Shine across most of the face' },
-  { id: 'dry', label: 'Dry', desc: 'Often feels tight or flaky' },
-  { id: 'combination', label: 'Combination', desc: 'Oily T-zone, drier elsewhere' },
-  { id: 'normal', label: 'Normal', desc: 'Rarely oily or tight' },
+const skinTypes: { id: SkinProfileData["skinType"]; label: string; desc: string }[] = [
+  { id: "oily", label: "Oily", desc: "Shine across most of the face" },
+  { id: "dry", label: "Dry", desc: "Often feels tight or flaky" },
+  { id: "combination", label: "Combination", desc: "Oily T-zone, drier elsewhere" },
+  { id: "normal", label: "Normal", desc: "Rarely oily or tight" },
+  { id: "sensitive", label: "Sensitive", desc: "Often reacts to products or weather" },
 ];
-
-const concernsList = ['Breakouts', 'Dehydration', 'Redness'];
+const concernsList = ["Breakouts", "Dehydration", "Redness", "Sensitivity", "Dark spots"];
+const defaults: SkinProfileData = { skinType: "combination", concerns: [], preferences: [] };
 
 export default function SkinProfile() {
-  const [selectedType, setSelectedType] = useState('combination');
-  const [selectedConcerns, setSelectedConcerns] = useState<string[]>(['Dehydration']);
+  const [profile, setProfile] = useState<SkinProfileData>(defaults);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const toggleConcern = (concern: string) => {
-    setSelectedConcerns(prev => 
-      prev.includes(concern) 
-        ? prev.filter(c => c !== concern) 
-        : [...prev, concern]
-    );
+  useEffect(() => {
+    getProfile().then(saved => { if (saved) setProfile(saved); }).catch(() => setMessage("Could not load your saved profile.")).finally(() => setLoading(false));
+  }, []);
+
+  const toggleConcern = (concern: string) => setProfile(current => ({
+    ...current,
+    concerns: current.concerns.includes(concern) ? current.concerns.filter(item => item !== concern) : [...current.concerns, concern],
+  }));
+
+  const update = async () => {
+    setSaving(true); setMessage("");
+    try { await saveProfile(profile); setMessage("Profile updated."); }
+    catch { setMessage("Could not save your profile. Check your connection and try again."); }
+    finally { setSaving(false); }
   };
 
-  return (
-    <div className="flex flex-col font-sans text-gray-800 -mx-4 -mt-4 bg-[#F8F5F1] min-h-screen relative">
-      {/* Scrollable Content */}
-      <div className="px-6 pt-10 pb-32">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold font-serif text-[#3A2D2A] mb-3">Skin profile</h1>
-          <p className="text-gray-600 leading-relaxed text-sm">
-            Self-reported details that tailor each check. This isn't a medical diagnosis.
-          </p>
-        </div>
-
-        {/* Skin Type Section */}
-        <div className="mb-10">
-          <h2 className="text-2xl font-bold font-serif text-[#3A2D2A] mb-4">Skin type</h2>
-          
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            {skinTypes.map((type) => {
-              const isSelected = selectedType === type.id;
-              return (
-                <button
-                  key={type.id}
-                  onClick={() => setSelectedType(type.id)}
-                  className={`flex flex-col items-start p-4 rounded-xl border text-left transition-colors ${
-                    isSelected 
-                      ? 'border-[#6B2D40] bg-[#F4EBEB]' 
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    {isSelected ? (
-                      <CircleDot size={18} className="text-[#6B2D40]" />
-                    ) : (
-                      <Circle size={18} className="text-[#CBAA9E]" />
-                    )}
-                    <span className={`font-bold ${isSelected ? 'text-[#6B2D40]' : 'text-gray-800'}`}>
-                      {type.label}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-500 pr-2 line-clamp-2 leading-relaxed">
-                    {type.desc}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          
-          {/* Not Sure Option (Full Width) */}
-          <button
-            onClick={() => setSelectedType('notsure')}
-            className={`w-full flex flex-col items-start p-4 rounded-xl border text-left transition-colors ${
-              selectedType === 'notsure' 
-                ? 'border-[#6B2D40] bg-[#F4EBEB]' 
-                : 'border-gray-200 bg-white hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              {selectedType === 'notsure' ? (
-                <CircleDot size={18} className="text-[#6B2D40]" />
-              ) : (
-                <Circle size={18} className="text-[#CBAA9E]" />
-              )}
-              <span className={`font-bold ${selectedType === 'notsure' ? 'text-[#6B2D40]' : 'text-gray-800'}`}>
-                Not sure
-              </span>
-            </div>
-            <span className="text-xs text-gray-500">Skip type-based checks</span>
-          </button>
-        </div>
-
-        {/* Skin Concerns Section */}
-        <div>
-          <h2 className="text-2xl font-bold font-serif text-[#3A2D2A] mb-2">Skin concerns</h2>
-          <p className="text-gray-500 text-sm mb-4">Optional — choose any that apply.</p>
-          
-          <div className="flex flex-wrap gap-2.5">
-            {concernsList.map((concern) => {
-              const isSelected = selectedConcerns.includes(concern);
-              return (
-                <button
-                  key={concern}
-                  onClick={() => toggleConcern(concern)}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full border text-sm font-medium transition-colors ${
-                    isSelected 
-                      ? 'border-[#6B2D40] bg-[#F4EBEB] text-[#6B2D40]' 
-                      : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'
-                  }`}
-                >
-                  {isSelected && <Check size={16} strokeWidth={2.5} />}
-                  {concern}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+  return <div className="-mx-4 -mt-4 relative min-h-screen bg-[#F8F5F1] font-sans text-gray-800">
+    <div className="px-6 pb-32 pt-10">
+      <h1 className="mb-3 font-serif text-4xl font-bold text-[#3A2D2A]">Skin profile</h1>
+      <p className="mb-8 text-sm leading-relaxed text-gray-600">Self-reported details that tailor each check. This isn't a medical diagnosis.</p>
+      {message && <p role="status" className="mb-4 rounded-xl bg-white p-3 text-sm text-[#6B2D40]">{message}</p>}
+      <h2 className="mb-4 font-serif text-2xl font-bold text-[#3A2D2A]">Skin type</h2>
+      <div className="mb-3 grid grid-cols-2 gap-3">
+        {skinTypes.map(type => { const selected = profile.skinType === type.id; return <button key={type.id} onClick={() => setProfile({ ...profile, skinType: type.id })} className={`rounded-xl border p-4 text-left ${selected ? "border-[#6B2D40] bg-[#F4EBEB]" : "border-gray-200 bg-white"}`}>
+          <span className="mb-1.5 flex items-center gap-2">{selected ? <CircleDot size={18} className="text-[#6B2D40]" /> : <Circle size={18} className="text-[#CBAA9E]" />}<b>{type.label}</b></span><span className="block text-xs leading-relaxed text-gray-500">{type.desc}</span>
+        </button>; })}
       </div>
-
-      {/* Sticky Bottom Button */}
-      <div className="fixed bottom-[72px] inset-x-0 mx-auto max-w-md bg-[#F8F5F1] px-6 py-4 border-t border-gray-100/50">
-        <button className="w-full bg-[#BCA3A7] hover:bg-[#A98E92] text-white/90 rounded-xl py-4 flex items-center justify-center font-medium text-lg transition-colors shadow-sm">
-          Update profile
-        </button>
-      </div>
+      <button onClick={() => setProfile({ ...profile, skinType: "unsure" })} className={`mb-8 w-full rounded-xl border p-4 text-left ${profile.skinType === "unsure" ? "border-[#6B2D40] bg-[#F4EBEB]" : "border-gray-200 bg-white"}`}><span className="flex items-center gap-2">{profile.skinType === "unsure" ? <CircleDot size={18} className="text-[#6B2D40]" /> : <Circle size={18} className="text-[#CBAA9E]" />}<b>Not sure</b></span><span className="ml-[26px] block text-xs text-gray-500">Skip type-based checks</span></button>
+      <h2 className="mb-2 font-serif text-2xl font-bold text-[#3A2D2A]">Skin concerns</h2><p className="mb-4 text-sm text-gray-500">Optional — choose any that apply.</p>
+      <div className="flex flex-wrap gap-2.5">{concernsList.map(concern => { const selected = profile.concerns.includes(concern); return <button key={concern} onClick={() => toggleConcern(concern)} className={`flex items-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-medium ${selected ? "border-[#6B2D40] bg-[#F4EBEB] text-[#6B2D40]" : "border-gray-200 bg-white"}`}>{selected && <Check size={16} />}{concern}</button>; })}</div>
     </div>
-  );
+    <div className="fixed inset-x-0 bottom-[72px] mx-auto max-w-md border-t border-gray-100/50 bg-[#F8F5F1] px-6 py-4"><button onClick={() => void update()} disabled={loading || saving} className="w-full rounded-xl bg-[#6B2D40] py-4 text-lg font-medium text-white disabled:opacity-60">{loading ? "Loading…" : saving ? "Saving…" : "Update profile"}</button></div>
+  </div>;
 }
