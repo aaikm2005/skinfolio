@@ -39,7 +39,9 @@ app.post("/api/analyse", async (req, res) => {
       return res.status(400).json({ error: "products[] is required" });
     }
     const result = analyseRoutine(products);
-    result.aiSummary = await explainFindings(products, result.findings);
+    const explanation = await explainFindings(products, result.findings);
+    result.aiSummary = explanation.summary;
+    result.aiGenerated = explanation.generated;
     res.json(result);
   } catch (err) {
     console.error(err);

@@ -53,7 +53,25 @@ export default function Routines() {
       {!loading && <button onClick={() => setAdding(value => !value)} className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white py-4 font-medium text-gray-800"><Plus size={19} />{adding ? "Close product list" : "Add product"}</button>}
       {adding && <div className="mb-4 rounded-2xl bg-white p-4 shadow-sm">{products.length === 0 ? <p className="text-sm text-gray-500">Add a product to My Rack first.</p> : <div className="flex flex-col gap-2">{products.filter(item => !(routine?.productIds ?? []).includes(item.id)).map(product => <button key={product.id} disabled={busy} onClick={() => void updateRoutine([...(routine?.productIds ?? []), product.id])} className="rounded-xl border border-gray-100 p-3 text-left hover:border-[#6B2D40] disabled:opacity-60"><span className="block font-medium">{product.name}</span><span className="text-xs text-gray-500">{product.brand || "Brand not specified"} · {product.category}</span></button>)}</div>}</div>}
       <button onClick={() => void runAnalysis()} disabled={busy || loading} className="w-full rounded-xl bg-[#6B2D40] py-4 font-medium text-white shadow-sm disabled:opacity-60">{busy ? "Working…" : "Analyse Routine"}</button>
-      {result && <section aria-live="polite" className="mt-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"><h2 className="mb-2 font-serif text-xl font-bold text-[#3A2D2A]">Routine check</h2><p className="mb-4 text-sm leading-relaxed text-gray-600">{result.aiSummary || (result.findings.length ? "Potential ingredient interactions were flagged." : "No interactions covered by the current rules were detected.")}</p>{result.findings.map(finding => <article key={finding.id} className="mb-3 rounded-xl bg-[#F9F6F0] p-3"><p className="mb-1 text-xs font-bold uppercase text-[#6B2D40]">{finding.priority} · {finding.category}</p><p className="text-sm">{finding.explanation}</p><p className="mt-2 text-xs text-gray-500">{finding.nextStep}</p></article>)}{result.unevaluatedProductIds.length > 0 && <p className="mt-3 text-sm text-amber-800">{result.unevaluatedProductIds.length} product(s) have no ingredient list and could not be evaluated.</p>}<p className="mt-3 text-xs text-gray-400">This check covers a limited set of ingredient patterns and is not a safety guarantee.</p></section>}
+      {result && <section aria-live="polite" className="mt-5 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <h2 className="mb-2 font-serif text-xl font-bold text-[#3A2D2A]">Routine check</h2>
+        <p className="mb-1 text-sm leading-relaxed text-gray-600">{result.aiSummary || (result.findings.length ? "Potential ingredient interactions were flagged." : "No interactions covered by the current rules were detected.")}</p>
+        <p className={`mb-4 text-xs ${result.aiGenerated === false ? "text-amber-800" : "text-gray-400"}`}>{result.aiGenerated === false ? "Fallback summary: Gemini did not return an explanation. Check the backend logs and Gemini API key or quota." : "Gemini explanation · interactions are flagged by the rule-based checker."}</p>
+        <h3 className="mb-2 text-sm font-semibold text-[#3A2D2A]">Each product</h3>
+        {result.productAssessments.map(assessment => {
+          const product = routineProducts.find(item => item.id === assessment.productId);
+          if (!product) return null;
+          return <article key={assessment.productId} className="mb-2 rounded-xl bg-[#F9F6F0] p-3">
+            <p className="text-sm font-medium">{product.name}</p>
+            <p className="mt-1 text-xs text-gray-600">{assessment.message}</p>
+            {assessment.recognizedIngredients.length > 0 && <p className="mt-1 text-xs text-gray-600">Matched ingredients: {assessment.recognizedIngredients.join(", ")}</p>}
+          </article>;
+        })}
+        {result.findings.map(finding => <article key={finding.id} className="mb-3 rounded-xl border border-[#E9DDE0] bg-white p-3"><p className="mb-1 text-xs font-bold uppercase text-[#6B2D40]">{finding.priority} · {finding.category}</p><p className="text-sm">{finding.explanation}</p><p className="mt-2 text-xs text-gray-500">{finding.nextStep}</p></article>)}
+        {result.unevaluatedProductIds.length > 0 && <p className="mt-3 text-sm text-amber-800">{result.unevaluatedProductIds.length} product(s) have no ingredient list and could not be evaluated.</p>}
+        {result.findings.length === 0 && result.unevaluatedProductIds.length === 0 && <p className="mt-3 text-sm text-gray-600">No interactions covered by the current rules were detected. This is not a guarantee that every combination is compatible.</p>}
+        <p className="mt-3 text-xs text-gray-400">The checker covers a limited set of ingredient patterns. It is not a medical or complete safety assessment.</p>
+      </section>}
     </div>
   </div>;
 }

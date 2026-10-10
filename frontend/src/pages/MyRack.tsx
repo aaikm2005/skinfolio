@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { Plus, Scan, Trash2, X } from "lucide-react";
 import type { Product, ProductCategory, ProductStatus } from "@shared/types";
 import { listProducts, removeProduct, saveProduct } from "../services/products";
+import type { AnalysisResult } from "@shared/types";
+import { analyse } from "../services/routines";
 
 const categories: ProductCategory[] = ["cleanser", "toner", "serum", "moisturiser", "sunscreen", "treatment"];
 const categoryLabel = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
@@ -17,6 +19,8 @@ export default function MyRack() {
   const [category, setCategory] = useState<ProductCategory>("cleanser");
   const [ingredients, setIngredients] = useState("");
   const [status, setStatus] = useState<ProductStatus>("using");
+  const [checkedProducts, setCheckedProducts] = useState<Record<string, AnalysisResult>>({});
+  const [checkingId, setCheckingId] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -57,6 +61,13 @@ export default function MyRack() {
     catch { setError("Could not delete the product. Please try again."); }
   };
 
+  const checkProduct = async (product: Product) => {
+    setCheckingId(product.id); setError("");
+    try { const result = await analyse([product]); setCheckedProducts(current => ({ ...current, [product.id]: result })); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Could not analyse this product."); }
+    finally { setCheckingId(""); }
+  };
+
   return (
     <div className="-mx-4 -mt-4 min-h-screen bg-[#F8F5F1] font-sans text-gray-800">
       <header className="px-6 pb-5 pt-10">
@@ -92,6 +103,19 @@ export default function MyRack() {
             <div className="mt-3 border-t border-gray-100 pt-3 text-xs text-gray-500">
               {product.ingredients.length ? `${product.ingredients.length} ingredients recorded` : "Ingredients not recorded · not evaluated"}
             </div>
+            <button onClick={() => void checkProduct(product)} disabled={checkingId === product.id} className="mt-3 rounded-lg border border-[#6B2D40] px-3 py-2 text-xs font-medium text-[#6B2D40] disabled:opacity-60">{checkingId === product.id ? "Checking…" : "Check this product"}</button>
+            {checkedProducts[product.id] && (() => {
+              const check = checkedProducts[product.id];
+              const assessment = check.productAssessments.find(item => item.productId === product.id);
+              return <div className="mt-3 rounded-xl bg-[#F9F6F0] p-3 text-sm">
+                <p className="font-semibold text-[#3A2D2A]">Product check</p>
+                <p className="mt-1 text-gray-600">{assessment?.message}</p>
+                {assessment?.recognizedIngredients.length ? <p className="mt-2 text-xs text-gray-600">Matched screening ingredients: {assessment.recognizedIngredients.join(", ")}</p> : null}
+                <p className="mt-2 text-xs text-gray-500">{check.aiSummary}</p>
+                {check.aiGenerated === false && <p className="mt-2 text-xs text-amber-800">This is a fallback summary; Gemini did not return an explanation. Check the backend logs and Gemini API key or quota.</p>}
+                <p className="mt-2 text-xs text-gray-400">Ingredient screening covers a limited set of patterns. It is not a safety guarantee.</p>
+              </div>;
+            })()}
           </article>)}
         </div>}
       </div>

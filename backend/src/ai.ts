@@ -40,18 +40,18 @@ const MODEL = "gemini-3.8-flash";
 export async function explainFindings(
   products: Product[],
   findings: Finding[]
-): Promise<string> {
-  const fallback =
-    findings.length > 0
+): Promise<{ summary: string; generated: boolean }> {
+  const fallback = products.length > 0 && products.every((product) => product.ingredients.length === 0)
+    ? "No ingredient lists are recorded for these products, so the current checker could not evaluate them."
+    : products.length === 1 && findings.length === 0
+      ? "This product was checked against the app's limited ingredient rules. The checker cannot assess product efficacy or personal suitability, and interaction rules compare ingredients across products."
+      : findings.length > 0
       ? "Potential ingredient interactions were flagged by our rule-based checker. Review the findings and product instructions before using these products together."
       : "No interactions covered by our current rules were detected. This does not guarantee that every product combination is compatible.";
 
   const apiKey = process.env.GEMINI_API_KEY;
-  console.log("Gemini API key loaded:", Boolean(apiKey));
-
   if (!apiKey) {
-    console.warn("GEMINI_API_KEY is missing.");
-    return fallback;
+    return { summary: fallback, generated: false };
   }
 
   try {
@@ -86,6 +86,10 @@ Instructions:
 - Distinguish possible irritation from a proven incompatibility.
 - If there are no findings, explain that the current rules detected no
   covered interactions; this does not guarantee compatibility.
+- If only one product is supplied, explain that interaction rules compare
+  products and cannot assess the product's efficacy or personal suitability.
+- If ingredients are missing, state clearly that the product could not be
+  screened; never imply that missing data is a clean result.
 - Encourage users to follow verified product instructions and introduce
   potentially irritating products cautiously.
 - Do not diagnose skin conditions or replace professional medical advice.
@@ -96,13 +100,10 @@ Instructions:
       model: MODEL,
       contents: prompt,
     });
-    console.log("Gemini response text:", response.text);
-
     const summary = response.text?.trim();
-
-    return summary || fallback;
+    return { summary: summary || fallback, generated: Boolean(summary) };
   } catch (error) {
-    console.error("Gemini analysis failed:", error);
-    return fallback;
+    console.error("Gemini analysis failed:", error instanceof Error ? error.message : "Unknown provider error");
+    return { summary: fallback, generated: false };
   }
 }
