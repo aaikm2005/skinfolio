@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildExtractUrl, requestProductExtraction, resolveApiBaseUrl } from '../src/services/api.js';
+import { buildExtractUrl, getApiHostnameForDiagnostics, requestProductExtraction, resolveApiBaseUrl } from '../src/services/api.js';
 
 test('resolves only a backend origin and normalizes one trailing slash', () => {
   assert.equal(resolveApiBaseUrl(' https://api.example.test/ ', false), 'https://api.example.test');
@@ -20,6 +20,12 @@ test('rejects missing production configuration and paths that would duplicate /a
 test('keeps localhost available only in development', () => {
   assert.equal(resolveApiBaseUrl('http://localhost:8787', true), 'http://localhost:8787');
   assert.equal(resolveApiBaseUrl(undefined, true), 'http://localhost:8787');
+});
+
+test('diagnostics expose only the API hostname and build environment', () => {
+  assert.equal(getApiHostnameForDiagnostics('https://user:secret@api.example.test/path', false), 'api.example.test');
+  assert.equal(getApiHostnameForDiagnostics(undefined, true), 'localhost');
+  assert.equal(getApiHostnameForDiagnostics(undefined, false), null);
 });
 
 test('posts raw image bytes with their image content type and parses structured success', async () => {

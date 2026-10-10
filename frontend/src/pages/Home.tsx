@@ -5,7 +5,7 @@ import type { IngredientListStatus, Product, ProductCategory } from '@shared/typ
 import { mergeProductExtractions, validateProductExtraction, type ProductExtraction } from '@shared/extraction';
 import { saveProduct } from '../services/products';
 import { getProfile } from '../services/profile';
-import { requestProductExtraction, resolveApiBaseUrl } from '../services/api';
+import { getApiHostnameForDiagnostics, requestProductExtraction, resolveApiBaseUrl } from '../services/api';
 
 const categoryLabel = (category: string) => category.charAt(0).toUpperCase() + category.slice(1);
 const IMAGE_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
@@ -103,15 +103,14 @@ export default function Home() {
     setScanning(true);
     setScanError('');
     try {
+      console.info('[Skinfolio API] scanner configuration', {
+        apiHostname: getApiHostnameForDiagnostics(import.meta.env.VITE_API_URL, import.meta.env.DEV),
+        productionBuild: import.meta.env.PROD,
+      });
       const apiUrl = resolveApiBaseUrl(import.meta.env.VITE_API_URL, import.meta.env.DEV);
       const results: ProductExtraction[] = [];
       for (const photo of capturedPhotos) {
         const contentType = getImageMimeType(photo.file);
-        console.info('[Skinfolio API] POST /api/extract', {
-          origin: new URL(apiUrl).origin,
-          contentType,
-          imageBytes: photo.file.size,
-        });
         const payload = await requestProductExtraction(apiUrl, photo.file, contentType);
         try {
           results.push(validateProductExtraction(payload));

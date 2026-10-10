@@ -19,6 +19,16 @@ export function resolveApiBaseUrl(configuredUrl: string | undefined, isDevelopme
   return parsed.origin;
 }
 
+export function getApiHostnameForDiagnostics(configuredUrl: string | undefined, isDevelopment: boolean): string | null {
+  const value = configuredUrl?.trim() || (isDevelopment ? LOCAL_API_URL : '');
+  if (!value) return null;
+  try {
+    return new URL(value).hostname;
+  } catch {
+    return null;
+  }
+}
+
 function isLoopbackHost(hostname: string): boolean {
   const host = hostname.toLowerCase().replace(/\.$/, '');
   return host === 'localhost'
