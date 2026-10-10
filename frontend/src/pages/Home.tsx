@@ -1,31 +1,53 @@
 import React, { useState } from 'react';
-import { Scan, User, RefreshCcw, Check, ArrowLeft, Camera, Image as ImageIcon, Edit2 } from 'lucide-react';
+import { Scan, User, RefreshCcw, Check, ArrowLeft, Camera, Image as ImageIcon } from 'lucide-react';
 
 export default function Home() {
-  // State to manage which screen is currently visible
   const [view, setView] = useState<'home' | 'scanner' | 'preview'>('home');
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  // Add this new state to hold the physical file
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
 
   const handleImageCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setCapturedFile(file); // Save the file for the API
-      setCapturedImage(URL.createObjectURL(file)); // Save the URL for the preview
+      setCapturedFile(file);
+      setCapturedImage(URL.createObjectURL(file));
       setView('preview');
     }
   };
 
   const handleRetake = () => {
     setCapturedImage(null);
-    setView('scanner'); // Go back to the scanner choice screen
+    setView('scanner'); 
   };
 
-  const handleConfirm = () => {
-    alert("Photo confirmed! Next step: Send to AI for OCR.");
-    setCapturedImage(null); 
-    setView('home'); // Reset to home for now
+  const handleConfirm = async () => {
+    if (!capturedFile) return;
+
+    try {
+      // 1. Package the image file
+      const formData = new FormData();
+      formData.append('image', capturedFile); 
+
+      // 2. Send to your backend API
+      // const response = await fetch('YOUR_BACKEND_URL', {
+      //   method: 'POST',
+      //   body: formData,
+      // });
+      // if (!response.ok) throw new Error("Failed to extract product data");
+      // const productData = await response.json();
+      
+      // 3. Save to Firebase
+      // await addProductToRack(productData);
+
+      alert("Success! Photo confirmed.");
+      setCapturedImage(null);
+      setCapturedFile(null);
+      setView('home'); 
+      
+    } catch (error) {
+      console.error(error);
+      alert("Error scanning product. Please try again.");
+    }
   };
 
   // --- 1. PREVIEW SCREEN ---
@@ -68,18 +90,8 @@ export default function Home() {
         <div className="px-6 pt-6 pb-24 overflow-y-auto">
           <h2 className="text-3xl font-bold font-serif text-[#3A2D2A] mb-3 leading-tight">What are you considering?</h2>
           <p className="text-gray-500 text-sm mb-6 leading-relaxed">
-            Photograph the packaging, or type the details from the label.
+            Photograph the packaging to extract the details from the label.
           </p>
-
-          {/* Tabs */}
-          <div className="flex bg-[#EBE3D9] p-1.5 rounded-2xl mb-8">
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white text-gray-900 rounded-xl font-medium text-sm shadow-sm">
-              <Scan size={18} /> Scan packaging
-            </button>
-            <button className="flex-1 flex items-center justify-center gap-2 py-2.5 text-gray-500 font-medium text-sm">
-              <Edit2 size={18} /> Enter manually
-            </button>
-          </div>
 
           {/* Photo Cards Grid */}
           <div className="flex gap-4 mb-8">
@@ -157,7 +169,6 @@ export default function Home() {
           </p>
         </div>
 
-        {/* This is now a regular button that switches the view instead of opening the camera directly */}
         <button 
           onClick={() => setView('scanner')}
           className="w-full bg-[#6B2D40] hover:bg-[#5E273A] text-white rounded-xl py-4 flex items-center justify-center gap-2 mb-4 transition-colors shadow-sm"
