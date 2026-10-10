@@ -53,7 +53,9 @@ In the Vercel project serving `frontend/`, add `VITE_API_URL` as an environment 
 
 ### Request size limitation
 
-The Express route accepts JPEG, PNG, and WebP raw image bodies up to 8 MB. Vercel Functions impose a hard **4.5 MB request-body limit** before Express runs, so Vercel cannot accept all files allowed by the current frontend's 8 MB selection limit. Images below Vercel's cap reach the route; larger ones receive Vercel's 413 response before backend validation. This platform limit cannot be raised with Express or `vercel.json`. Because this task is backend-only, the frontend was left unchanged; to support the full current 8 MB range, the frontend must compress images or the API must use a host that accepts larger request bodies.
+The scanner accepts JPEG, PNG, and WebP photos up to 4 MiB and sends each as a raw image body. The backend route applies the same limit. This leaves headroom below Vercel Functions' hard **4.5 MB request-body limit**, which rejects larger requests before Express can handle them. The limit is per photo; multi-photo scans send separate requests. `VITE_API_URL` must be an absolute backend origin only, with no `/api` path. A trailing slash is normalized.
+
+The browser logs only the backend origin, image MIME type, byte count, and safe error text. Backend Function logs record request method, origin, content type, content length, response status, and duration. Neither side logs image bytes, Gemini keys, or request bodies. Fetch-level errors can still represent CORS, DNS/TLS, an invalid host, or a browser/network failure; check DevTools Network to distinguish those cases.
 
 ### Verify the deployment
 
@@ -66,14 +68,14 @@ curl -i -X POST "https://<backend-origin>/api/extract" \
   --data-binary @/path/to/clear-product-photo.jpg
 ```
 
-The health endpoint should return `200` and `{ "ok": true }`. A successful extraction returns structured product data; expected error cases include `400` for empty or invalid image bytes, `413` for request size limits, `415` for unsupported MIME types, `503` when `GEMINI_API_KEY` is missing, `422` when the photo has no readable product text, and `502` when Gemini fails or returns invalid data. Use a real JPEG, PNG, or WebP below 4.5 MB and inspect Vercel Function logs if extraction fails. This repository has not been deployed, so no live URL or extraction result is claimed.
+The health endpoint should return `200` and `{ "ok": true }`. A successful extraction returns structured product data; expected errors include `400` for empty or invalid image bytes, `413` for request size limits, `415` for unsupported MIME types, `503` when `GEMINI_API_KEY` is missing, `422` when the photo has no readable product text, and `502` when Gemini fails or returns invalid data. Use a real JPEG, PNG, or WebP no larger than 4 MiB and inspect Vercel Function logs if extraction fails. This repository has not been tested against live Vercel URLs, so no live extraction result is claimed.
 
 ## Analysis and knowledge endpoints
 
 - `GET /api/health` reports API availability.
 - `GET /api/knowledge` returns the starter product catalogue, ingredient knowledge, and interaction rules.
 - `POST /api/analyse` accepts `{ "products": [...] }`, `{ "product": {...} }`, or `{ "ingredients": ["Retinol"] }`.
-- `POST /api/extract` accepts a JPEG, PNG, or WebP image body (up to 8 MB) and uses Gemini to read label details. The scanner can submit several photos to this same endpoint, then combines results and lets the user edit the ingredient names. Raw visible text and uncertain readings are shown for verification. Uncertain AI readings are excluded from compatibility matching unless the user corrects them or confirms the complete list; extracted ingredients are not authoritative and should be checked against the package.
+- `POST /api/extract` accepts a JPEG, PNG, or WebP image body (up to 4 MiB) and uses Gemini to read label details. The scanner can submit several photos to this same endpoint, then combines results and lets the user edit the ingredient names. Raw visible text and uncertain readings are shown for verification. Uncertain AI readings are excluded from compatibility matching unless the user corrects them or confirms the complete list; extracted ingredients are not authoritative and should be checked against the package.
 
 Analysis responses include deterministic findings, per-product and per-ingredient matches, source references, warnings for unknown or incomplete data, and an optional `aiSummary` plus `aiGenerated` flag. When Gemini is not configured or unavailable, the API returns a cautious fallback summary and sets `aiGenerated` to `false`.
 

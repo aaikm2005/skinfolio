@@ -5,10 +5,12 @@ import type { IngredientListStatus, Product, ProductCategory } from '@shared/typ
 import { mergeProductExtractions, validateProductExtraction, type ProductExtraction } from '@shared/extraction';
 import { saveProduct } from '../services/products';
 import { getProfile } from '../services/profile';
+import { requestProductExtraction, resolveApiBaseUrl } from '../services/api';
 
 const categoryLabel = (category: string) => category.charAt(0).toUpperCase() + category.slice(1);
 const IMAGE_TYPES: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+// Leave headroom below Vercel Functions' 4.5 MB request-body limit.
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const MAX_SCAN_PHOTOS = 4;
 const getImageMimeType = (file: File) => file.type || IMAGE_TYPES[file.name.split('.').pop()?.toLowerCase() ?? ''] || '';
 
@@ -60,7 +62,7 @@ export default function Home() {
       } else if (file.size === 0) {
         issues.push(`${file.name} is empty; choose another photo.`);
       } else if (file.size > MAX_IMAGE_BYTES) {
-        issues.push(`${file.name} is larger than 8 MB; choose a smaller photo.`);
+        issues.push(`${file.name} is larger than 4 MB; choose a smaller photo.`);
       } else acceptable.push(file);
     }
     const available = MAX_SCAN_PHOTOS - capturedPhotos.length;
@@ -101,33 +103,29 @@ export default function Home() {
     setScanning(true);
     setScanError('');
     try {
-      const configuredApiUrl = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8787' : '');
-      const apiUrl = configuredApiUrl.replace(/\/$/, '');
-      if (!apiUrl) throw new Error('Set VITE_API_URL to connect to the Skinfolio API.');
+      const apiUrl = resolveApiBaseUrl(import.meta.env.VITE_API_URL, import.meta.env.DEV);
       const results: ProductExtraction[] = [];
       for (const photo of capturedPhotos) {
-        const response = await fetch(`${apiUrl}/api/extract`, {
-          method: 'POST',
-          headers: { 'Content-Type': getImageMimeType(photo.file) },
-          body: photo.file,
+        const contentType = getImageMimeType(photo.file);
+        console.info('[Skinfolio API] POST /api/extract', {
+          origin: new URL(apiUrl).origin,
+          contentType,
+          imageBytes: photo.file.size,
         });
-        let payload: unknown;
-        try { payload = await response.json(); }
-        catch { throw new Error(response.ok ? 'The API returned an unreadable response.' : `The API request failed (${response.status}). Check the backend and retry.`); }
-        if (!response.ok) {
-          const message = payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string'
-            ? payload.error : `Product extraction failed (${response.status}). Please retry.`;
-          throw new Error(message);
+        const payload = await requestProductExtraction(apiUrl, photo.file, contentType);
+        try {
+          results.push(validateProductExtraction(payload));
+        } catch {
+          throw new Error('The API returned an invalid extraction response. Check the backend response and Function logs.');
         }
-        results.push(validateProductExtraction(payload));
       }
       const combined = mergeProductExtractions(results);
       setExtracted(combined);
       setExtractedListComplete(false);
     } catch (error) {
-      setScanError(error instanceof TypeError
-        ? 'Could not reach the Skinfolio API. Check that the backend is running, VITE_API_URL is correct, and the backend CORS_ORIGIN includes this website.'
-        : error instanceof Error ? error.message : 'Could not scan this product. Please try again.');
+      const message = error instanceof Error ? error.message : 'Could not scan this product. Please try again.';
+      console.error('[Skinfolio API] Product extraction failed', { message });
+      setScanError(message);
     } finally { setScanning(false); }
   };
 
